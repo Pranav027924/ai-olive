@@ -41,13 +41,33 @@ precommit: ## Run pre-commit on all files.
 test: ## Run all workspace tests with pytest.
 	$(UV) run pytest
 
+COMPOSE ?= docker compose
+
 .PHONY: up
-up: ## Bring up local infra (added in Phase 0.3).
-	@echo "up: docker compose config is added in Phase 0.3"
+up: ## Bring up local infra (Postgres, Redis, MinIO).
+	$(COMPOSE) up -d
+	@echo "Waiting for services to be healthy..."
+	@$(COMPOSE) ps
+
+.PHONY: up-analytics
+up-analytics: ## Bring up local infra + ClickHouse (Phase 7+).
+	$(COMPOSE) --profile analytics up -d
 
 .PHONY: down
-down: ## Tear down local infra (added in Phase 0.3).
-	@echo "down: docker compose config is added in Phase 0.3"
+down: ## Tear down local infra (keeps volumes).
+	$(COMPOSE) down
+
+.PHONY: down-volumes
+down-volumes: ## Tear down local infra AND delete volumes (destructive).
+	$(COMPOSE) down --volumes
+
+.PHONY: ps
+ps: ## Show container status.
+	$(COMPOSE) ps
+
+.PHONY: logs
+logs: ## Tail logs from all infra containers.
+	$(COMPOSE) logs -f
 
 .PHONY: clean
 clean: ## Remove Python build/test caches.
