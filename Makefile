@@ -13,15 +13,29 @@ install: ## Install/sync workspace dependencies via uv.
 	$(UV) sync --all-packages
 
 .PHONY: check
-check: lint typecheck ## Run lint and type-check (placeholder until Phase 0.2).
+check: lint typecheck ## Run lint and type-check.
 
 .PHONY: lint
-lint: ## Run ruff (added in Phase 0.2).
-	@echo "lint: ruff config is added in Phase 0.2"
+lint: ## Run ruff lint and format check.
+	$(UV) run ruff check .
+	$(UV) run ruff format --check .
+
+.PHONY: format
+format: ## Auto-fix lint issues and reformat.
+	$(UV) run ruff check . --fix
+	$(UV) run ruff format .
 
 .PHONY: typecheck
-typecheck: ## Run mypy (added in Phase 0.2).
-	@echo "typecheck: mypy config is added in Phase 0.2"
+typecheck: ## Run mypy --strict over the workspace.
+	$(UV) run mypy .
+
+.PHONY: hooks
+hooks: ## Install pre-commit git hooks.
+	$(UV) run pre-commit install
+
+.PHONY: precommit
+precommit: ## Run pre-commit on all files.
+	$(UV) run pre-commit run --all-files
 
 .PHONY: test
 test: ## Run all workspace tests with pytest.

@@ -1,0 +1,27 @@
+# Pre-commit hooks. Install with `uv run pre-commit install`.
+# CI also runs the same hooks via `uv run pre-commit run --all-files`.
+#
+# mypy is intentionally not a pre-commit hook: it is slow and noisy on partial
+# diffs. mypy runs in CI via `make typecheck`.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format

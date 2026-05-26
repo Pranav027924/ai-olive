@@ -7,7 +7,12 @@ readme = "README.md"
 dependencies = []
 
 [dependency-groups]
-dev = []
+dev = [
+    "ruff>=0.9,<1.0",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "pytest>=8",
+]
 
 [tool.uv]
 package = false
@@ -16,4 +21,90 @@ package = false
 members = [
     "shared/contracts",
     "shared/testing",
+]
+
+# ---------------------------------------------------------------------------
+# Tooling configuration shared across all workspace members.
+# Per-service overrides live in each service's own pyproject.toml.
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "ui",
+    "**/migrations/**",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "ASYNC", # flake8-async
+    "S",     # flake8-bandit (security)
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "PT",   # flake8-pytest-style
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501", # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"] # asserts and dummy creds in tests
+"**/test_*.py" = ["S101", "S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_decorators = true
+plugins = ["pydantic.mypy"]
+exclude = [
+    "build/",
+    "dist/",
+    ".venv/",
+    "ui/",
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_decorators = false
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+testpaths = [
+    "shared",
+    "chat-service",
+    "logging-sdk",
+    "ingestion-service",
+    "worker-service",
+    "media-service",
+    "dashboard-service",
+    "tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:pydantic.*",
 ]
