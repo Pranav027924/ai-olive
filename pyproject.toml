@@ -21,6 +21,7 @@ package = false
 members = [
     "shared/contracts",
     "shared/testing",
+    "chat-service",
 ]
 
 # ---------------------------------------------------------------------------
