@@ -95,6 +95,7 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
+asyncio_mode = "auto"
 testpaths = [
     "shared",
     "chat-service",
