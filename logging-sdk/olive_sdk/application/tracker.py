@@ -30,6 +30,7 @@ suppressed.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Self
@@ -130,11 +131,21 @@ class Tracker:
             else max(0, int((self._first_chunk_at - started_at).total_seconds() * 1000))
         )
 
-        # Status precedence: explicit > exception > success.
-        if exc_type is not None and not isinstance(exc_val, _NormalExitMarker):
-            status: Status = "error"
-            error_type: str | None = exc_type.__name__
-            error_message: str | None = str(exc_val) if exc_val is not None else None
+        # Status precedence:
+        #   1. asyncio.CancelledError → cancelled (so cooperative cancel
+        #      from the host event loop is reflected without the caller
+        #      having to call mark_cancelled()).
+        #   2. Any other exception → error.
+        #   3. Explicit mark_cancelled / mark_timeout.
+        #   4. Otherwise success.
+        if exc_type is not None and issubclass(exc_type, asyncio.CancelledError):
+            status: Status = "cancelled"
+            error_type: str | None = None
+            error_message: str | None = None
+        elif exc_type is not None:
+            status = "error"
+            error_type = exc_type.__name__
+            error_message = str(exc_val) if exc_val is not None else None
         elif self._explicit_status is not None:
             status = self._explicit_status
             error_type = None
@@ -165,7 +176,3 @@ class Tracker:
             sdk_version=self._sdk_version,
         )
         await self._emitter.emit(event)
-
-
-class _NormalExitMarker(BaseException):
-    """Reserved for future use — never actually instantiated."""
