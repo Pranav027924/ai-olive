@@ -33,3 +33,12 @@ class InvalidStatusTransition(ChatDomainError):
         super().__init__(f"Cannot transition session from {frm.value} to {to.value}.")
         self.frm = frm
         self.to = to
+
+
+class InvalidStreamState(ChatDomainError):
+    """Attempted to mutate a StreamingResponse that is already terminal."""
+
+    def __init__(self, verb: str, state: object) -> None:
+        super().__init__(f"Cannot {verb} a stream in state '{state}'.")
+        self.verb = verb
+        self.state = state
