@@ -7,6 +7,7 @@ dependencies = [
     "olive-contracts",
     "pydantic>=2.7",
     "anthropic>=0.39",
+    "httpx>=0.27",
 ]
 
 [dependency-groups]

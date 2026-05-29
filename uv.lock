@@ -1003,6 +1003,7 @@ version = "0.1.0"
 source = { editable = "logging-sdk" }
 dependencies = [
     { name = "anthropic" },
+    { name = "httpx" },
     { name = "olive-contracts" },
     { name = "pydantic" },
 ]
@@ -1016,6 +1017,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.39" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "olive-contracts", editable = "shared/contracts" },
     { name = "pydantic", specifier = ">=2.7" },
 ]
