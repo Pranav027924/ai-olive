@@ -48,6 +48,15 @@ class ChatServiceSettings(BaseSettings):
     # ---- Logging SDK ----
     log_emitter_path: Path = Path("logs") / "inference.jsonl"
 
+    # HTTP emitter (Phase 4.10). When ingestion_url is empty the
+    # chat-service falls back to file-only emission so dev without an
+    # ingestion service still gets local JSONL output.
+    ingestion_url: str = ""
+    ingestion_api_key: str = ""
+    http_emitter_max_batch: int = Field(default=20, ge=1, le=1000)
+    http_emitter_flush_interval_seconds: float = Field(default=2.0, gt=0.0)
+    http_emitter_queue_size: int = Field(default=1000, ge=1)
+
     # ---- Dev-only auth shim until JWT lands in Phase 9.4 ----
     dev_user_id: UUID = UUID("00000000-0000-0000-0000-000000000001")
     dev_user_email: str = "dev@local"

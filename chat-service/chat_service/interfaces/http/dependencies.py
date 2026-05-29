@@ -13,7 +13,9 @@ from uuid import UUID
 
 from fastapi import Depends
 from olive_sdk.application.emitter_port import EmitterPort
+from olive_sdk.infrastructure.emitters.composite_emitter import CompositeEmitter
 from olive_sdk.infrastructure.emitters.file_emitter import FileEmitter
+from olive_sdk.infrastructure.emitters.http_emitter import HttpEmitter
 from redis.asyncio import Redis
 
 from chat_service.application.ports.cancellation_store import CancellationStore
@@ -59,7 +61,26 @@ RepoDep = Annotated[SessionRepository, Depends(get_repository)]
 
 @lru_cache(maxsize=1)
 def _sdk_emitter() -> EmitterPort:
-    return FileEmitter(path=_settings().log_emitter_path)
+    """Build the chat-service's emitter.
+
+    When ``ingestion_url`` is set we tee to both an HttpEmitter (for
+    analytics via the ingestion service → Redis Streams → Worker) and
+    a FileEmitter (so devs can ``tail -f logs/inference.jsonl``). With
+    no ingestion URL configured we degrade to file-only so the SDK
+    still produces output for inspection.
+    """
+    settings = _settings()
+    file_emitter = FileEmitter(path=settings.log_emitter_path)
+    if not settings.ingestion_url:
+        return file_emitter
+    http_emitter = HttpEmitter(
+        endpoint=settings.ingestion_url,
+        api_key=settings.ingestion_api_key,
+        max_batch=settings.http_emitter_max_batch,
+        flush_interval_seconds=settings.http_emitter_flush_interval_seconds,
+        queue_size=settings.http_emitter_queue_size,
+    )
+    return CompositeEmitter(emitters=[http_emitter, file_emitter])
 
 
 @lru_cache(maxsize=1)
