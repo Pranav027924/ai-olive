@@ -11,6 +11,7 @@ members = [
     "ai-olive",
     "chat-service",
     "olive-contracts",
+    "olive-sdk",
     "olive-testing",
 ]
 
@@ -955,6 +956,33 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
+
+[[package]]
+name = "olive-sdk"
+version = "0.1.0"
+source = { editable = "logging-sdk" }
+dependencies = [
+    { name = "olive-contracts" },
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "olive-contracts", editable = "shared/contracts" },
+    { name = "pydantic", specifier = ">=2.7" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
 
 [[package]]
 name = "olive-testing"

@@ -1,0 +1,25 @@
+[project]
+name = "olive-sdk"
+version = "0.1.0"
+description = "In-process logging SDK for LLM calls (PRD §6.2)"
+requires-python = ">=3.11"
+dependencies = [
+    "olive-contracts",
+    "pydantic>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["olive_sdk"]
+
+[tool.uv.sources]
+olive-contracts = { workspace = true }
