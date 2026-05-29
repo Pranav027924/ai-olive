@@ -127,6 +127,8 @@ class StreamAssistantResponseHandler:
         error_detail: str | None = None
         try:
             async for chunk in self._llm.stream(
+                session_id=session.id,
+                message_id=assistant_msg_id,
                 messages=context,
                 config=session.config,
                 system_prompt=session.system_prompt,

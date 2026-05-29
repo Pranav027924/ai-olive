@@ -17,17 +17,24 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Protocol
+from uuid import UUID
 
 from chat_service.domain.entities.message import Message
 from chat_service.domain.value_objects.model_config import ModelConfig
 
 
 class LLMClient(Protocol):
-    """Async port that yields text deltas as they arrive from the LLM."""
+    """Async port that yields text deltas as they arrive from the LLM.
+
+    ``session_id`` and ``message_id`` flow through so the logging SDK
+    can stamp the resulting LogEvent (Phase 3.10).
+    """
 
     def stream(
         self,
         *,
+        session_id: UUID,
+        message_id: UUID | None,
         messages: list[Message],
         config: ModelConfig,
         system_prompt: str | None = None,

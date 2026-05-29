@@ -8,6 +8,7 @@ same .env (PRD §9.1).
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import Field
@@ -43,6 +44,9 @@ class ChatServiceSettings(BaseSettings):
     # ---- Behaviour ----
     context_window: int = Field(default=20, ge=1, le=200)
     cancel_ttl_seconds: int = Field(default=600, ge=10, le=86400)
+
+    # ---- Logging SDK ----
+    log_emitter_path: Path = Path("logs") / "inference.jsonl"
 
     # ---- Dev-only auth shim until JWT lands in Phase 9.4 ----
     dev_user_id: UUID = UUID("00000000-0000-0000-0000-000000000001")

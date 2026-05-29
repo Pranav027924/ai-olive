@@ -12,6 +12,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
+from olive_sdk.application.emitter_port import EmitterPort
+from olive_sdk.infrastructure.emitters.file_emitter import FileEmitter
 from redis.asyncio import Redis
 
 from chat_service.application.ports.cancellation_store import CancellationStore
@@ -33,7 +35,7 @@ from chat_service.infrastructure.persistence.engine import get_sessionmaker
 from chat_service.infrastructure.persistence.postgres_session_repo import (
     PostgresSessionRepository,
 )
-from chat_service.infrastructure.sdk.anthropic_llm_client import AnthropicLLMClient
+from chat_service.infrastructure.sdk.sdk_llm_client import SdkLlmClient
 
 
 @lru_cache(maxsize=1)
@@ -55,8 +57,19 @@ def get_repository(settings: SettingsDep) -> SessionRepository:
 RepoDep = Annotated[SessionRepository, Depends(get_repository)]
 
 
+@lru_cache(maxsize=1)
+def _sdk_emitter() -> EmitterPort:
+    return FileEmitter(path=_settings().log_emitter_path)
+
+
+@lru_cache(maxsize=1)
+def _sdk_llm_client() -> SdkLlmClient:
+    settings = _settings()
+    return SdkLlmClient(emitter=_sdk_emitter(), api_key=settings.anthropic_api_key)
+
+
 def get_llm(settings: SettingsDep) -> LLMClient:
-    return AnthropicLLMClient(api_key=settings.anthropic_api_key)
+    return _sdk_llm_client()
 
 
 LlmDep = Annotated[LLMClient, Depends(get_llm)]

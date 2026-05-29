@@ -74,6 +74,8 @@ class FakeLLMClient(LLMClient):
         self.chunks = chunks
         self.error = error
         self.call_count = 0
+        self.received_session_id: UUID | None = None
+        self.received_message_id: UUID | None = None
         self.received_messages: list[Message] | None = None
         self.received_config: ModelConfig | None = None
         self.received_system_prompt: str | None = None
@@ -81,11 +83,15 @@ class FakeLLMClient(LLMClient):
     async def stream(
         self,
         *,
+        session_id: UUID,
+        message_id: UUID | None,
         messages: list[Message],
         config: ModelConfig,
         system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
         self.call_count += 1
+        self.received_session_id = session_id
+        self.received_message_id = message_id
         self.received_messages = list(messages)
         self.received_config = config
         self.received_system_prompt = system_prompt

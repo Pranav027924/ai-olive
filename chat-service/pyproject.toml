@@ -5,12 +5,12 @@ description = "Chat plane — sessions, messages, SSE streaming (PRD §6.1)"
 requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
+    "olive-sdk",
     "pydantic>=2.7",
     "pydantic-settings>=2.5",
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
     "alembic>=1.13",
-    "anthropic>=0.39",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "redis>=5.0",
@@ -35,3 +35,4 @@ packages = ["chat_service"]
 
 [tool.uv.sources]
 olive-contracts = { workspace = true }
+olive-sdk = { workspace = true }

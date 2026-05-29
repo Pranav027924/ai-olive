@@ -312,10 +312,10 @@ version = "0.1.0"
 source = { editable = "chat-service" }
 dependencies = [
     { name = "alembic" },
-    { name = "anthropic" },
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "olive-contracts" },
+    { name = "olive-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "redis" },
@@ -336,10 +336,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
-    { name = "anthropic", specifier = ">=0.39" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "olive-contracts", editable = "shared/contracts" },
+    { name = "olive-sdk", editable = "logging-sdk" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.5" },
     { name = "redis", specifier = ">=5.0" },
