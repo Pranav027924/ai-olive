@@ -20,6 +20,7 @@ from chat_service.infrastructure.persistence.postgres_session_repo import (
     PostgresSessionRepository,
 )
 from chat_service.infrastructure.persistence.sqlalchemy_models import Base, UserRow
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 DEV_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEV_USER_EMAIL = "dev@local"
@@ -85,3 +87,24 @@ async def pg_repo(
     sessionmaker: async_sessionmaker[AsyncSession],
 ) -> PostgresSessionRepository:
     return PostgresSessionRepository(sessionmaker)
+
+
+# ---------------------------------------------------------------------------
+# Redis fixtures (Phase 2.6+)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Iterator[RedisContainer]:
+    with RedisContainer("redis:7-alpine") as r:
+        yield r
+
+
+@pytest_asyncio.fixture
+async def redis_client(redis_container: RedisContainer) -> AsyncIterator[Redis]:
+    url = f"redis://{redis_container.get_container_host_ip()}:{redis_container.get_exposed_port(6379)}/0"
+    client: Redis = Redis.from_url(url, decode_responses=True)
+    # Wipe state between tests so they cannot see each other's keys.
+    await client.flushdb()
+    yield client
+    await client.aclose()

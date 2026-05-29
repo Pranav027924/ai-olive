@@ -113,4 +113,5 @@ testpaths = [
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:pydantic.*",
+    "ignore::DeprecationWarning:testcontainers.*",
 ]
