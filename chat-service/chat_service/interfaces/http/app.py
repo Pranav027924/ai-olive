@@ -14,7 +14,7 @@ from chat_service.domain.errors import (
     SessionAlreadyTerminal,
     SessionNotFound,
 )
-from chat_service.interfaces.http.routers import messages, sessions
+from chat_service.interfaces.http.routers import messages, sessions, stream
 
 
 def create_app() -> FastAPI:
@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
 
     app.include_router(sessions.router)
     app.include_router(messages.router)
+    app.include_router(stream.router)
 
     return app
 

@@ -7,11 +7,13 @@ tests stay unit-fast.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
+from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.domain.entities.session import Session
@@ -19,6 +21,7 @@ from chat_service.domain.value_objects.model_config import ModelConfig
 from chat_service.domain.value_objects.session_status import SessionStatus
 from chat_service.interfaces.http.app import create_app
 from chat_service.interfaces.http.dependencies import (
+    get_cancellations,
     get_dev_user_id,
     get_llm,
     get_repository,
@@ -26,7 +29,11 @@ from chat_service.interfaces.http.dependencies import (
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from tests.conftest import FakeLLMClient, InMemorySessionRepository
+from tests.conftest import (
+    FakeLLMClient,
+    InMemoryCancellationStore,
+    InMemorySessionRepository,
+)
 
 DEV_USER = UUID("00000000-0000-0000-0000-000000000001")
 
@@ -42,7 +49,16 @@ def http_llm() -> FakeLLMClient:
 
 
 @pytest.fixture
-def app(http_repo: InMemorySessionRepository, http_llm: FakeLLMClient) -> FastAPI:
+def http_cancellations() -> InMemoryCancellationStore:
+    return InMemoryCancellationStore()
+
+
+@pytest.fixture
+def app(
+    http_repo: InMemorySessionRepository,
+    http_llm: FakeLLMClient,
+    http_cancellations: InMemoryCancellationStore,
+) -> FastAPI:
     app = create_app()
 
     def _repo() -> SessionRepository:
@@ -54,9 +70,13 @@ def app(http_repo: InMemorySessionRepository, http_llm: FakeLLMClient) -> FastAP
     def _user() -> UUID:
         return DEV_USER
 
+    def _cancel() -> CancellationStore:
+        return http_cancellations
+
     app.dependency_overrides[get_repository] = _repo
     app.dependency_overrides[get_llm] = _llm
     app.dependency_overrides[get_dev_user_id] = _user
+    app.dependency_overrides[get_cancellations] = _cancel
     return app
 
 
@@ -252,3 +272,115 @@ async def test_send_message_on_terminal_session_returns_409_problem_json(
     assert r.status_code == 409
     assert r.headers["content-type"].startswith("application/problem+json")
     assert r.json()["title"] == "session already terminal"
+
+
+# ---------------------------------------------------------------------------
+# GET /chat/{id}/stream  (SSE)
+# ---------------------------------------------------------------------------
+
+
+def _parse_sse(body: str) -> list[tuple[str, str]]:
+    """Return a flat list of (event_name, data_str) pairs from raw SSE text."""
+    events: list[tuple[str, str]] = []
+    current_event: str | None = None
+    for raw_line in body.splitlines():
+        if raw_line.startswith("event:"):
+            current_event = raw_line[len("event:") :].strip()
+        elif raw_line.startswith("data:"):
+            data = raw_line[len("data:") :].strip()
+            events.append((current_event or "message", data))
+            current_event = None
+    return events
+
+
+async def test_stream_happy_path_yields_started_chunks_finished(
+    client: AsyncClient, http_llm: FakeLLMClient
+) -> None:
+    http_llm.chunks = ["hel", "lo "]
+    created = await client.post("/sessions", json={})
+    sid = created.json()["id"]
+    await client.post(f"/chat/{sid}/messages", json={"content": "hi"})
+
+    r = await client.get(f"/chat/{sid}/stream")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse(r.text)
+    names = [n for n, _ in events]
+    assert names[0] == "started"
+    assert names[-1] == "finished"
+    chunks = [json.loads(d)["text"] for n, d in events if n == "chunk"]
+    assert chunks == ["hel", "lo "]
+    started = json.loads(events[0][1])
+    assert started["seq"] == 2
+    assert UUID(started["message_id"])
+    finished = json.loads(events[-1][1])
+    assert finished["state"] == "completed"
+    assert finished["content"] == "hello "
+    assert finished["message_id"] == started["message_id"]
+
+
+async def test_stream_unknown_session_returns_404_problem_json(client: AsyncClient) -> None:
+    r = await client.get(f"/chat/{uuid4()}/stream")
+    assert r.status_code == 404
+    assert r.headers["content-type"].startswith("application/problem+json")
+
+
+async def test_stream_terminal_session_returns_409_problem_json(
+    client: AsyncClient, http_repo: InMemorySessionRepository
+) -> None:
+    cfg = ModelConfig(provider="anthropic", model="claude-opus-4-7")
+    s = Session.create(user_id=DEV_USER, config=cfg)
+    s.transition_to(SessionStatus.ARCHIVED)
+    http_repo.seed([s])
+
+    r = await client.get(f"/chat/{s.id}/stream")
+    assert r.status_code == 409
+    assert r.headers["content-type"].startswith("application/problem+json")
+
+
+async def test_stream_with_cancel_flag_set_finishes_cancelled(
+    client: AsyncClient,
+    http_llm: FakeLLMClient,
+    http_cancellations: InMemoryCancellationStore,
+) -> None:
+    http_llm.chunks = ["a", "b", "c"]
+    created = await client.post("/sessions", json={})
+    sid = created.json()["id"]
+    await client.post(f"/chat/{sid}/messages", json={"content": "hi"})
+
+    await http_cancellations.mark_cancelled(UUID(sid))
+
+    r = await client.get(f"/chat/{sid}/stream")
+    assert r.status_code == 200
+    events = _parse_sse(r.text)
+    finished = json.loads(next(d for n, d in events if n == "finished"))
+    assert finished["state"] == "cancelled"
+    assert finished["content"] == ""
+
+
+# ---------------------------------------------------------------------------
+# POST /chat/{id}/cancel
+# ---------------------------------------------------------------------------
+
+
+async def test_cancel_returns_204_and_sets_flag(
+    client: AsyncClient,
+    http_cancellations: InMemoryCancellationStore,
+) -> None:
+    created = await client.post("/sessions", json={})
+    sid = created.json()["id"]
+
+    r = await client.post(f"/chat/{sid}/cancel")
+    assert r.status_code == 204
+    assert await http_cancellations.is_cancelled(UUID(sid)) is True
+
+
+async def test_cancel_unknown_session_returns_404_problem_json(
+    client: AsyncClient,
+    http_cancellations: InMemoryCancellationStore,
+) -> None:
+    r = await client.post(f"/chat/{uuid4()}/cancel")
+    assert r.status_code == 404
+    assert r.headers["content-type"].startswith("application/problem+json")
+    assert http_cancellations.mark_calls == []
