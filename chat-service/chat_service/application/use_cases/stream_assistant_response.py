@@ -25,6 +25,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.domain.entities.message import Message
@@ -35,6 +36,24 @@ from chat_service.domain.value_objects.streaming_response import (
     StreamingResponse,
     StreamingState,
 )
+
+
+class _NoOpCancellationStore:
+    """Default CancellationStore — never reports cancelled, never persists.
+
+    Used when the handler is constructed without a real store (typical
+    in unit tests that don't care about cancellation). Production wires
+    the Redis adapter from Phase 2.6.
+    """
+
+    async def mark_cancelled(self, session_id: UUID) -> None:
+        return None
+
+    async def is_cancelled(self, session_id: UUID) -> bool:
+        return False
+
+    async def clear(self, session_id: UUID) -> None:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,10 +99,12 @@ class StreamAssistantResponseHandler:
         *,
         sessions: SessionRepository,
         llm: LLMClient,
+        cancellations: CancellationStore | None = None,
         context_builder: ContextBuilder | None = None,
     ) -> None:
         self._sessions = sessions
         self._llm = llm
+        self._cancellations: CancellationStore = cancellations or _NoOpCancellationStore()
         self._context_builder = context_builder or ContextBuilder()
 
     async def handle(self, cmd: StreamAssistantResponseCommand) -> AsyncIterator[StreamEvent]:
@@ -110,12 +131,21 @@ class StreamAssistantResponseHandler:
                 config=session.config,
                 system_prompt=session.system_prompt,
             ):
+                if await self._cancellations.is_cancelled(session.id):
+                    stream.cancel()
+                    break
                 stream.push(chunk)
                 yield StreamChunk(text=chunk)
-            stream.complete()
+            if stream.state is StreamingState.ACTIVE:
+                stream.complete()
         except Exception as exc:
-            stream.error()
+            if not stream.is_terminal:
+                stream.error()
             error_detail = f"{type(exc).__name__}: {exc}"
+        finally:
+            # Reset the flag so the next stream attempt on this session
+            # starts clean. Idempotent on the Redis adapter too.
+            await self._cancellations.clear(session.id)
 
         msg = session.add_assistant_message(
             content=stream.content,

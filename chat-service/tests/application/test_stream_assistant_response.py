@@ -28,7 +28,11 @@ from chat_service.domain.value_objects.model_config import ModelConfig
 from chat_service.domain.value_objects.session_status import SessionStatus
 from chat_service.domain.value_objects.streaming_response import StreamingState
 
-from tests.conftest import FakeLLMClient, InMemorySessionRepository
+from tests.conftest import (
+    FakeLLMClient,
+    InMemoryCancellationStore,
+    InMemorySessionRepository,
+)
 
 
 async def _make_session_with_user_message(
@@ -284,3 +288,113 @@ async def test_session_system_prompt_is_forwarded(
     await _collect(StreamAssistantResponseHandler(sessions=repo, llm=llm), session.id)
 
     assert llm.received_system_prompt == "be brief"
+
+
+# ---------------------------------------------------------------------------
+# Cancellation (Phase 2.5)
+# ---------------------------------------------------------------------------
+
+
+async def test_cancellation_flag_set_before_first_chunk_yields_no_chunks(
+    repo: InMemorySessionRepository,
+    cancellations: InMemoryCancellationStore,
+    llm: FakeLLMClient,
+    config: ModelConfig,
+) -> None:
+    llm.chunks = ["a", "b", "c"]
+    session = await _make_session_with_user_message(repo, config)
+    await cancellations.mark_cancelled(session.id)  # type: ignore[attr-defined]
+
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, cancellations=cancellations)
+    events = await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    chunks = [e for e in events if isinstance(e, StreamChunk)]
+    finished = events[-1]
+    assert chunks == []
+    assert isinstance(finished, StreamFinished)
+    assert finished.state is StreamingState.CANCELLED
+    assert finished.content == ""
+    assert finished.message.status is MessageStatus.CANCELLED
+
+
+async def test_cancellation_after_some_chunks_preserves_partial_content(
+    repo: InMemorySessionRepository,
+    cancellations: InMemoryCancellationStore,
+    config: ModelConfig,
+) -> None:
+    # The fake llm yields "hel" then "lo " then "world"; we flip the
+    # cancel flag after the second chunk is emitted by calling the
+    # store directly between iterations via a small adapter test.
+    session = await _make_session_with_user_message(repo, config)
+
+    # Build a custom FakeLLMClient that flips cancel after each chunk.
+    class _FlippingLLM(FakeLLMClient):
+        def __init__(self, *, store: InMemoryCancellationStore, sid: object) -> None:
+            super().__init__(chunks=["hel", "lo ", "world"])
+            self._store = store
+            self._sid = sid
+            self._flipped = False
+
+        async def stream(self, **kwargs: object):  # type: ignore[no-untyped-def]
+            count = 0
+            async for c in super().stream(**kwargs):  # type: ignore[arg-type]
+                yield c
+                count += 1
+                if count == 2 and not self._flipped:
+                    await self._store.mark_cancelled(self._sid)  # type: ignore[arg-type]
+                    self._flipped = True
+
+    llm = _FlippingLLM(store=cancellations, sid=session.id)  # type: ignore[attr-defined]
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, cancellations=cancellations)
+    events = await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    chunks = [e for e in events if isinstance(e, StreamChunk)]
+    assert [c.text for c in chunks] == ["hel", "lo "]
+    finished = events[-1]
+    assert isinstance(finished, StreamFinished)
+    assert finished.state is StreamingState.CANCELLED
+    assert finished.content == "hel" + "lo "
+    assert finished.message.status is MessageStatus.CANCELLED
+
+
+async def test_clear_is_called_after_stream_completes(
+    repo: InMemorySessionRepository,
+    cancellations: InMemoryCancellationStore,
+    llm: FakeLLMClient,
+    config: ModelConfig,
+) -> None:
+    session = await _make_session_with_user_message(repo, config)
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, cancellations=cancellations)
+    await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    assert cancellations.clear_calls == [session.id]  # type: ignore[attr-defined]
+
+
+async def test_clear_is_called_after_stream_errors(
+    repo: InMemorySessionRepository,
+    cancellations: InMemoryCancellationStore,
+    config: ModelConfig,
+) -> None:
+    llm = FakeLLMClient(chunks=[], error=RuntimeError("boom"))
+    session = await _make_session_with_user_message(repo, config)
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, cancellations=cancellations)
+    await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    assert cancellations.clear_calls == [session.id]  # type: ignore[attr-defined]
+
+
+async def test_clear_is_called_after_cancellation(
+    repo: InMemorySessionRepository,
+    cancellations: InMemoryCancellationStore,
+    llm: FakeLLMClient,
+    config: ModelConfig,
+) -> None:
+    session = await _make_session_with_user_message(repo, config)
+    await cancellations.mark_cancelled(session.id)  # type: ignore[attr-defined]
+
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, cancellations=cancellations)
+    await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    assert cancellations.clear_calls == [session.id]  # type: ignore[attr-defined]
+    # And the flag is no longer set.
+    assert await cancellations.is_cancelled(session.id) is False  # type: ignore[attr-defined]

@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Iterable
 from uuid import UUID
 
 import pytest
+from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.domain.entities.message import Message
@@ -95,6 +96,33 @@ class FakeLLMClient(LLMClient):
             raise self.error
 
 
+class InMemoryCancellationStore(CancellationStore):
+    """Simple set-backed cancellation store for unit tests.
+
+    Phase 2.6 ships the production Redis adapter; tests that don't
+    need the cancel path use the NoOp default baked into
+    StreamAssistantResponseHandler.
+    """
+
+    def __init__(self) -> None:
+        self._flagged: set[UUID] = set()
+        self.mark_calls: list[UUID] = []
+        self.is_cancelled_calls: list[UUID] = []
+        self.clear_calls: list[UUID] = []
+
+    async def mark_cancelled(self, session_id: UUID) -> None:
+        self._flagged.add(session_id)
+        self.mark_calls.append(session_id)
+
+    async def is_cancelled(self, session_id: UUID) -> bool:
+        self.is_cancelled_calls.append(session_id)
+        return session_id in self._flagged
+
+    async def clear(self, session_id: UUID) -> None:
+        self._flagged.discard(session_id)
+        self.clear_calls.append(session_id)
+
+
 @pytest.fixture
 def repo() -> InMemorySessionRepository:
     return InMemorySessionRepository()
@@ -103,6 +131,11 @@ def repo() -> InMemorySessionRepository:
 @pytest.fixture
 def llm() -> FakeLLMClient:
     return FakeLLMClient()
+
+
+@pytest.fixture
+def cancellations() -> InMemoryCancellationStore:
+    return InMemoryCancellationStore()
 
 
 @pytest.fixture
