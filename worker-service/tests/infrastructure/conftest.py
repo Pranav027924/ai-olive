@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from contracts.log_event import LogEvent
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 from worker_service.infrastructure.persistence.postgres_log_repo import (
     PostgresLogRepository,
 )
@@ -103,6 +105,29 @@ async def log_repo(
     sessionmaker: async_sessionmaker[AsyncSession],
 ) -> PostgresLogRepository:
     return PostgresLogRepository(sessionmaker)
+
+
+# ---------------------------------------------------------------------------
+# Redis fixtures (Phase 5.9+)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Iterator[RedisContainer]:
+    with RedisContainer("redis:7-alpine") as r:
+        yield r
+
+
+@pytest_asyncio.fixture
+async def redis_client(redis_container: RedisContainer) -> AsyncIterator[Redis]:
+    url = (
+        f"redis://{redis_container.get_container_host_ip()}:"
+        f"{redis_container.get_exposed_port(6379)}/0"
+    )
+    client: Redis = Redis.from_url(url, decode_responses=True)
+    await client.flushdb()
+    yield client
+    await client.aclose()
 
 
 # ---------------------------------------------------------------------------
