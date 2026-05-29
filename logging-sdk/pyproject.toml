@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
     "pydantic>=2.7",
+    "anthropic>=0.39",
 ]
 
 [dependency-groups]
