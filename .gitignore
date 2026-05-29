@@ -52,6 +52,8 @@ dist/
 *.log
 logs/
 data/
+# SDK file emitter default location
+inference.jsonl
 tmp/
 .local/
 

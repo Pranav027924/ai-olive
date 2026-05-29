@@ -62,8 +62,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101", "S105", "S106"] # asserts and dummy creds in tests
-"**/test_*.py" = ["S101", "S105", "S106"]
+# asserts (S101), dummy creds (S105/S106), and sync pathlib reads in
+# async tests (ASYNC240) are fine in tests.
+"**/tests/**" = ["S101", "S105", "S106", "ASYNC240"]
+"**/test_*.py" = ["S101", "S105", "S106", "ASYNC240"]
 
 [tool.ruff.format]
 quote-style = "double"
