@@ -1,10 +1,8 @@
 """AnthropicLLMClient — direct Anthropic adapter for the LLMClient port.
 
-Phase 2.2 introduces ``stream`` as the only public method (the Port
-no longer has ``complete``). For continuity this implementation still
-calls ``messages.create`` under the hood and yields the full text as a
-single chunk; Phase 2.4 rewrites ``stream`` to use Anthropic's real
-streaming API (``messages.stream(...).text_stream``).
+Phase 2.4 wires the adapter to Anthropic's real streaming API
+(``messages.stream(...).text_stream``). The Phase 2.2 placeholder that
+yielded the full reply as one chunk is gone.
 
 Notes:
 - Anthropic only accepts ``user`` and ``assistant`` roles. ``system``
@@ -17,7 +15,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from anthropic import AsyncAnthropic
-from anthropic.types import MessageParam, TextBlock
+from anthropic.types import MessageParam
 
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.domain.entities.message import Message
@@ -45,18 +43,6 @@ class AnthropicLLMClient(LLMClient):
         config: ModelConfig,
         system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
-        full = await self._complete_once(
-            messages=messages, config=config, system_prompt=system_prompt
-        )
-        yield full
-
-    async def _complete_once(
-        self,
-        *,
-        messages: list[Message],
-        config: ModelConfig,
-        system_prompt: str | None,
-    ) -> str:
         anthropic_messages: list[MessageParam] = [
             {
                 "role": "user" if m.role is MessageRole.USER else "assistant",
@@ -67,20 +53,19 @@ class AnthropicLLMClient(LLMClient):
         ]
 
         if system_prompt:
-            response = await self._client.messages.create(
+            stream_cm = self._client.messages.stream(
                 model=config.model,
                 max_tokens=self._max_tokens,
                 messages=anthropic_messages,
                 system=system_prompt,
             )
         else:
-            response = await self._client.messages.create(
+            stream_cm = self._client.messages.stream(
                 model=config.model,
                 max_tokens=self._max_tokens,
                 messages=anthropic_messages,
             )
 
-        for block in response.content:
-            if isinstance(block, TextBlock):
-                return block.text
-        return ""
+        async with stream_cm as stream:
+            async for delta in stream.text_stream:
+                yield delta
