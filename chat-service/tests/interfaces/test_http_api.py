@@ -198,24 +198,28 @@ async def test_get_session_unknown_id_returns_404_problem_json(client: AsyncClie
 # ---------------------------------------------------------------------------
 
 
-async def test_send_message_happy_path(client: AsyncClient, http_llm: FakeLLMClient) -> None:
-    http_llm.response = "yo"
+async def test_send_message_happy_path_returns_user_message(client: AsyncClient) -> None:
     created = await client.post("/sessions", json={"system_prompt": "be brief"})
     sid = created.json()["id"]
 
     r = await client.post(f"/chat/{sid}/messages", json={"content": "hi"})
 
-    assert r.status_code == 200
+    assert r.status_code == 201
     body = r.json()
-    assert body["user_message"]["content"] == "hi"
-    assert body["user_message"]["role"] == "user"
-    assert body["assistant_message"]["content"] == "yo"
-    assert body["assistant_message"]["role"] == "assistant"
-    assert body["user_message"]["seq"] == 1
-    assert body["assistant_message"]["seq"] == 2
+    assert body["content"] == "hi"
+    assert body["role"] == "user"
+    assert body["seq"] == 1
+    assert body["status"] == "complete"
 
-    # System prompt was actually forwarded to the LLM.
-    assert http_llm.received_system_prompt == "be brief"
+
+async def test_send_message_does_not_invoke_llm(
+    client: AsyncClient, http_llm: FakeLLMClient
+) -> None:
+    created = await client.post("/sessions", json={})
+    sid = created.json()["id"]
+    await client.post(f"/chat/{sid}/messages", json={"content": "hi"})
+    # POST /messages is user-only in Phase 2; the assistant reply moves to GET /stream.
+    assert http_llm.call_count == 0
 
 
 async def test_send_message_unknown_session_returns_404_problem_json(

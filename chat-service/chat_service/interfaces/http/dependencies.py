@@ -18,6 +18,9 @@ from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.application.use_cases.create_session import CreateSessionHandler
 from chat_service.application.use_cases.list_sessions import ListSessionsHandler
 from chat_service.application.use_cases.send_text_message import SendTextMessageHandler
+from chat_service.application.use_cases.stream_assistant_response import (
+    StreamAssistantResponseHandler,
+)
 from chat_service.config import ChatServiceSettings
 from chat_service.domain.services.context_builder import ContextBuilder
 from chat_service.infrastructure.persistence.engine import get_sessionmaker
@@ -74,10 +77,14 @@ def get_list_sessions_handler(repo: RepoDep) -> ListSessionsHandler:
     return ListSessionsHandler(sessions=repo)
 
 
-def get_send_text_message_handler(
+def get_send_text_message_handler(repo: RepoDep) -> SendTextMessageHandler:
+    return SendTextMessageHandler(sessions=repo)
+
+
+def get_stream_assistant_response_handler(
     repo: RepoDep, llm: LlmDep, settings: SettingsDep
-) -> SendTextMessageHandler:
-    return SendTextMessageHandler(
+) -> StreamAssistantResponseHandler:
+    return StreamAssistantResponseHandler(
         sessions=repo,
         llm=llm,
         context_builder=ContextBuilder(window=settings.context_window),
@@ -87,3 +94,6 @@ def get_send_text_message_handler(
 CreateSessionDep = Annotated[CreateSessionHandler, Depends(get_create_session_handler)]
 ListSessionsDep = Annotated[ListSessionsHandler, Depends(get_list_sessions_handler)]
 SendTextMessageDep = Annotated[SendTextMessageHandler, Depends(get_send_text_message_handler)]
+StreamAssistantResponseDep = Annotated[
+    StreamAssistantResponseHandler, Depends(get_stream_assistant_response_handler)
+]

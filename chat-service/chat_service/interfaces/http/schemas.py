@@ -79,11 +79,6 @@ class SessionView(BaseModel):
         )
 
 
-class SendMessageResponse(BaseModel):
-    user_message: MessageView
-    assistant_message: MessageView
-
-
 class ProblemDetail(BaseModel):
     """RFC 7807 problem details (PRD §9.6)."""
 

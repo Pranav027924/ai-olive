@@ -1,18 +1,20 @@
 """AnthropicLLMClient — direct Anthropic adapter for the LLMClient port.
 
-Phase 1 uses Anthropic's blocking ``messages.create`` API; Phase 2
-replaces this with the streaming variant, and Phase 3 wraps it again
-through the logging SDK without changing the application layer
-(PRD §6.1, §6.2).
+Phase 2.2 introduces ``stream`` as the only public method (the Port
+no longer has ``complete``). For continuity this implementation still
+calls ``messages.create`` under the hood and yields the full text as a
+single chunk; Phase 2.4 rewrites ``stream`` to use Anthropic's real
+streaming API (``messages.stream(...).text_stream``).
 
 Notes:
-- Anthropic only accepts ``user`` and ``assistant`` roles in the
-  ``messages`` list. ``system`` is passed via the separate ``system``
-  parameter; any ``system`` messages in the context are dropped here.
-- ``tool`` messages are not used in Phase 1 and are also filtered out.
+- Anthropic only accepts ``user`` and ``assistant`` roles. ``system``
+  is passed via the ``system`` kwarg; any ``system`` messages in the
+  context are dropped here. ``tool`` is unused in Phase 1 / 2.
 """
 
 from __future__ import annotations
+
+from collections.abc import AsyncIterator
 
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, TextBlock
@@ -36,12 +38,24 @@ class AnthropicLLMClient(LLMClient):
         self._client = client or AsyncAnthropic(api_key=api_key)
         self._max_tokens = max_tokens
 
-    async def complete(
+    async def stream(
         self,
         *,
         messages: list[Message],
         config: ModelConfig,
         system_prompt: str | None = None,
+    ) -> AsyncIterator[str]:
+        full = await self._complete_once(
+            messages=messages, config=config, system_prompt=system_prompt
+        )
+        yield full
+
+    async def _complete_once(
+        self,
+        *,
+        messages: list[Message],
+        config: ModelConfig,
+        system_prompt: str | None,
     ) -> str:
         anthropic_messages: list[MessageParam] = [
             {

@@ -1,14 +1,19 @@
-"""End-to-end test for the chat-service happy path (Phase 1.11).
+"""End-to-end test for the chat-service post-Phase-2 happy path (Phase 1.11).
 
-Exercises the real FastAPI app against the real Postgres compose
-service and the real Anthropic API:
+In Phase 2 ``POST /chat/{id}/messages`` only appends the user message;
+the assistant reply moves to the SSE endpoint at ``GET /chat/{id}/stream``
+(introduced in Phase 2.7) and is covered by the streaming/cancel
+e2e tests in Phase 2.8.
 
-  POST /sessions              create a session
-  POST /chat/{id}/messages    send a user message, get an assistant reply
-  Postgres                    verify session + 2 messages persisted
+Here we still verify:
+
+  POST /sessions              creates a session
+  POST /chat/{id}/messages    appends the user message (201)
+  Postgres                    1 message row present
 
 Preconditions (skipped automatically if not met):
-- ``ANTHROPIC_API_KEY`` is set in the environment.
+- ``ANTHROPIC_API_KEY`` is set (kept as a gate so this test only runs
+  in the same environment the full e2e expects to run in).
 - Postgres is reachable on ``POSTGRES_HOST:POSTGRES_PORT``.
 - The ``chat`` schema has been migrated (``make migrate``).
 
@@ -50,7 +55,7 @@ async def live_client(settings: ChatServiceSettings) -> AsyncIterator[AsyncClien
 
 
 @requires_anthropic
-async def test_create_session_send_message_returns_assistant_reply(
+async def test_create_session_and_send_user_message(
     live_client: AsyncClient, settings: ChatServiceSettings
 ) -> None:
     created_sid: UUID | None = None
@@ -65,24 +70,18 @@ async def test_create_session_send_message_returns_assistant_reply(
             },
         )
         assert created.status_code == 201, created.text
-        created_body = created.json()
-        created_sid = UUID(created_body["id"])
+        created_sid = UUID(created.json()["id"])
 
         r = await live_client.post(
             f"/chat/{created_sid}/messages",
-            json={"content": "say the word 'pong' and nothing else"},
-            timeout=60.0,
+            json={"content": "hello"},
         )
-        assert r.status_code == 200, r.text
+        assert r.status_code == 201, r.text
         body = r.json()
 
-        assert body["user_message"]["content"] == "say the word 'pong' and nothing else"
-        assert body["user_message"]["role"] == "user"
-        assert body["user_message"]["seq"] == 1
-
-        assert body["assistant_message"]["role"] == "assistant"
-        assert body["assistant_message"]["seq"] == 2
-        assert body["assistant_message"]["content"].strip() != ""
+        assert body["content"] == "hello"
+        assert body["role"] == "user"
+        assert body["seq"] == 1
 
         # Verify persistence directly in Postgres.
         async with sm() as db:
@@ -90,7 +89,7 @@ async def test_create_session_send_message_returns_assistant_reply(
                 text("SELECT COUNT(*) FROM chat.messages WHERE session_id = CAST(:sid AS uuid)"),
                 {"sid": str(created_sid)},
             )
-            assert row_count == 2
+            assert row_count == 1
     finally:
         if created_sid is not None:
             async with sm() as db, db.begin():

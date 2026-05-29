@@ -7,7 +7,7 @@ Phase 1.6 (Postgres) and Phase 1.8 (Anthropic LLM client).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from uuid import UUID
 
 import pytest
@@ -52,33 +52,47 @@ class InMemorySessionRepository(SessionRepository):
 
 
 class FakeLLMClient(LLMClient):
-    """Records inputs and returns a pre-set reply.
+    """Records inputs and yields a pre-set reply as chunks.
 
-    Pass ``error=`` to make ``complete`` raise that exception.
+    Pass ``chunks=["foo", "bar"]`` to control deltas explicitly, or
+    ``response="foobar"`` to yield it as a single chunk.
+
+    Pass ``error=`` to raise that exception after the chunks (or
+    immediately if no chunks are provided) — useful for testing the
+    StreamFinished(state=ERRORED) path.
     """
 
-    def __init__(self, response: str = "ok", *, error: BaseException | None = None) -> None:
+    def __init__(
+        self,
+        response: str = "ok",
+        *,
+        chunks: list[str] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
         self.response = response
+        self.chunks = chunks
         self.error = error
         self.call_count = 0
         self.received_messages: list[Message] | None = None
         self.received_config: ModelConfig | None = None
         self.received_system_prompt: str | None = None
 
-    async def complete(
+    async def stream(
         self,
         *,
         messages: list[Message],
         config: ModelConfig,
         system_prompt: str | None = None,
-    ) -> str:
+    ) -> AsyncIterator[str]:
         self.call_count += 1
         self.received_messages = list(messages)
         self.received_config = config
         self.received_system_prompt = system_prompt
+        chunks = self.chunks if self.chunks is not None else [self.response]
+        for chunk in chunks:
+            yield chunk
         if self.error is not None:
             raise self.error
-        return self.response
 
 
 @pytest.fixture

@@ -1,8 +1,12 @@
-"""Unit tests for AnthropicLLMClient (Phase 1.8).
+"""Unit tests for AnthropicLLMClient (Phase 1.8 / 2.2).
 
-Uses a hand-rolled stub for the Anthropic SDK so tests are offline and
-the contract between our adapter and the SDK is explicit. Real-network
-verification happens in the E2E test (Phase 1.11) gated on
+Uses a hand-rolled stub for the Anthropic SDK so tests are offline.
+Phase 2.2 narrows the LLMClient port to a single ``stream`` method;
+the Anthropic adapter still issues ``messages.create`` under the hood
+and yields the full text as one chunk. Phase 2.4 rewrites this to use
+``messages.stream`` and the test stub is upgraded accordingly.
+
+Real-network verification happens in the E2E tests gated on
 ANTHROPIC_API_KEY.
 """
 
@@ -64,6 +68,10 @@ def _cfg() -> ModelConfig:
     return ModelConfig(provider="anthropic", model="claude-opus-4-7")
 
 
+async def _collect(adapter: AnthropicLLMClient, **kwargs: Any) -> str:
+    return "".join([c async for c in adapter.stream(**kwargs)])
+
+
 async def test_messages_are_mapped_to_anthropic_role_and_content(
     adapter: AnthropicLLMClient, stub: _StubAnthropic
 ) -> None:
@@ -73,7 +81,7 @@ async def test_messages_are_mapped_to_anthropic_role_and_content(
         _msg(MessageRole.USER, "second", 3),
     ]
 
-    await adapter.complete(messages=msgs, config=_cfg())
+    await _collect(adapter, messages=msgs, config=_cfg())
 
     assert stub.messages.last_kwargs is not None
     assert stub.messages.last_kwargs["messages"] == [
@@ -86,7 +94,8 @@ async def test_messages_are_mapped_to_anthropic_role_and_content(
 async def test_system_prompt_is_passed_via_system_kwarg(
     adapter: AnthropicLLMClient, stub: _StubAnthropic
 ) -> None:
-    await adapter.complete(
+    await _collect(
+        adapter,
         messages=[_msg(MessageRole.USER, "hi", 1)],
         config=_cfg(),
         system_prompt="be brief",
@@ -99,7 +108,7 @@ async def test_system_prompt_is_passed_via_system_kwarg(
 async def test_no_system_kwarg_when_prompt_is_absent(
     adapter: AnthropicLLMClient, stub: _StubAnthropic
 ) -> None:
-    await adapter.complete(messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
+    await _collect(adapter, messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
 
     assert stub.messages.last_kwargs is not None
     assert "system" not in stub.messages.last_kwargs
@@ -114,7 +123,7 @@ async def test_system_and_tool_messages_are_filtered_from_message_list(
         _msg(MessageRole.TOOL, "tool output", 3),
     ]
 
-    await adapter.complete(messages=msgs, config=_cfg())
+    await _collect(adapter, messages=msgs, config=_cfg())
 
     assert stub.messages.last_kwargs is not None
     assert stub.messages.last_kwargs["messages"] == [{"role": "user", "content": "hi"}]
@@ -126,30 +135,30 @@ async def test_model_and_max_tokens_are_passed_through(
     adapter = AnthropicLLMClient(api_key="x", max_tokens=512, client=stub)  # type: ignore[arg-type]
     cfg = ModelConfig(provider="anthropic", model="claude-haiku-4-5")
 
-    await adapter.complete(messages=[_msg(MessageRole.USER, "hi", 1)], config=cfg)
+    await _collect(adapter, messages=[_msg(MessageRole.USER, "hi", 1)], config=cfg)
 
     assert stub.messages.last_kwargs is not None
     assert stub.messages.last_kwargs["model"] == "claude-haiku-4-5"
     assert stub.messages.last_kwargs["max_tokens"] == 512
 
 
-async def test_first_text_block_is_returned(
+async def test_stream_yields_text_block_content(
     adapter: AnthropicLLMClient, stub: _StubAnthropic
 ) -> None:
     stub.messages.reply_text = "hello world"
 
-    out = await adapter.complete(messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
+    out = await _collect(adapter, messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
 
     assert out == "hello world"
 
 
-async def test_returns_empty_string_when_no_text_blocks(
+async def test_stream_yields_empty_when_no_text_blocks(
     adapter: AnthropicLLMClient, stub: _StubAnthropic
 ) -> None:
     async def _no_text(**_: Any) -> Any:
         return SimpleNamespace(content=[ToolUseBlock(type="tool_use", id="x", name="t", input={})])
 
     stub.messages.create = _no_text  # type: ignore[method-assign]
-    out = await adapter.complete(messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
+    out = await _collect(adapter, messages=[_msg(MessageRole.USER, "hi", 1)], config=_cfg())
 
     assert out == ""
