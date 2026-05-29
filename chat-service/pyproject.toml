@@ -6,6 +6,10 @@ requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
     "pydantic>=2.7",
+    "pydantic-settings>=2.5",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
 ]
 
 [dependency-groups]

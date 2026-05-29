@@ -41,6 +41,14 @@ precommit: ## Run pre-commit on all files.
 test: ## Run all workspace tests with pytest.
 	$(UV) run pytest
 
+.PHONY: migrate
+migrate: ## Apply all chat-service migrations to local Postgres.
+	cd chat-service && $(UV) run alembic upgrade head
+
+.PHONY: migrate-down
+migrate-down: ## Roll back all chat-service migrations (destructive).
+	cd chat-service && $(UV) run alembic downgrade base
+
 COMPOSE ?= docker compose
 
 .PHONY: up
