@@ -24,6 +24,7 @@ members = [
     "chat-service",
     "logging-sdk",
     "ingestion-service",
+    "worker-service",
 ]
 
 # ---------------------------------------------------------------------------
@@ -86,6 +87,10 @@ exclude = [
     "dist/",
     ".venv/",
     "ui/",
+    # Alembic env.py and migrations are loaded by the alembic CLI, not as
+    # packages. Multiple services each carry their own alembic/env.py
+    # which collide on the module name `alembic.env` for mypy.
+    "^.*/alembic/.*$",
 ]
 
 [[tool.mypy.overrides]]

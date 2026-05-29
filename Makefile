@@ -49,6 +49,17 @@ migrate: ## Apply all chat-service migrations to local Postgres.
 migrate-down: ## Roll back all chat-service migrations (destructive).
 	cd chat-service && $(UV) run alembic downgrade base
 
+.PHONY: migrate-worker
+migrate-worker: ## Apply worker-service migrations to local Postgres.
+	cd worker-service && $(UV) run alembic upgrade head
+
+.PHONY: migrate-worker-down
+migrate-worker-down: ## Roll back worker-service migrations (destructive).
+	cd worker-service && $(UV) run alembic downgrade base
+
+.PHONY: migrate-all
+migrate-all: migrate migrate-worker ## Apply both chat-service and worker-service migrations.
+
 COMPOSE ?= docker compose
 
 .PHONY: up
