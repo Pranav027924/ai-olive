@@ -81,6 +81,8 @@ warn_unreachable = true
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_decorators = true
+# Each service has its own tests/infrastructure/conftest.py etc — without
+# namespace package + explicit base they collide on the same module path.
 plugins = ["pydantic.mypy"]
 exclude = [
     "build/",
@@ -91,6 +93,10 @@ exclude = [
     # packages. Multiple services each carry their own alembic/env.py
     # which collide on the module name `alembic.env` for mypy.
     "^.*/alembic/.*$",
+    # Per-service conftest.py files collide on the module path
+    # `tests.{layer}.conftest`. They're only loaded by pytest and pytest
+    # doesn't care; mypy still type-checks the test files themselves.
+    "^.*/tests/.*/conftest\\.py$",
 ]
 
 [[tool.mypy.overrides]]
