@@ -28,7 +28,7 @@ from uuid import UUID, uuid4
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.domain.entities.message import Message
-from chat_service.domain.errors import SessionNotFound
+from chat_service.domain.errors import SessionAlreadyTerminal, SessionNotFound
 from chat_service.domain.services.context_builder import ContextBuilder
 from chat_service.domain.value_objects.message_status import MessageStatus
 from chat_service.domain.value_objects.streaming_response import (
@@ -90,6 +90,10 @@ class StreamAssistantResponseHandler:
         session = await self._sessions.get(cmd.session_id)
         if session is None:
             raise SessionNotFound(str(cmd.session_id))
+        # Fail fast on terminal sessions — otherwise the caller would see
+        # StreamStarted + chunks before add_assistant_message raised at the end.
+        if session.status.is_terminal:
+            raise SessionAlreadyTerminal(session.status)
 
         assistant_msg_id = uuid4()
         next_seq = len(session.messages) + 1
