@@ -60,6 +60,10 @@ migrate-worker-down: ## Roll back worker-service migrations (destructive).
 .PHONY: migrate-all
 migrate-all: migrate migrate-worker ## Apply both chat-service and worker-service migrations.
 
+.PHONY: worker
+worker: ## Run the worker-service drain loop.
+	$(UV) run python -m worker_service.interfaces.cli.run_worker
+
 COMPOSE ?= docker compose
 
 .PHONY: up
