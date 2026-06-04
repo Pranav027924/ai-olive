@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
     "olive-sdk",
+    "media-service",
     "pydantic>=2.7",
     "pydantic-settings>=2.5",
     "sqlalchemy[asyncio]>=2.0",
@@ -36,3 +37,4 @@ packages = ["chat_service"]
 [tool.uv.sources]
 olive-contracts = { workspace = true }
 olive-sdk = { workspace = true }
+media-service = { workspace = true }

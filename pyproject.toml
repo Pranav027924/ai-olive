@@ -25,6 +25,7 @@ members = [
     "logging-sdk",
     "ingestion-service",
     "worker-service",
+    "media-service",
 ]
 
 # ---------------------------------------------------------------------------

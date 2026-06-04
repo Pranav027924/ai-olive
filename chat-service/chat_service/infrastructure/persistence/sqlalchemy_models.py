@@ -14,6 +14,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     ForeignKey,
     Integer,
@@ -102,3 +103,40 @@ class MessageRow(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
     session: Mapped[SessionRow] = relationship(back_populates="messages")
+
+
+class AttachmentRow(Base):
+    __tablename__ = "attachments"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('file','audio','image')",
+            name="attachments_kind_check",
+        ),
+        CheckConstraint(
+            "parse_status IN ('pending','complete','failed')",
+            name="attachments_parse_status_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    session_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey(f"{CHAT_SCHEMA}.sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey(f"{CHAT_SCHEMA}.messages.id"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    s3_key: Mapped[str] = mapped_column(Text, nullable=False)
+    parse_status: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
