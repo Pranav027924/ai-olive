@@ -150,18 +150,30 @@ def get_cancellations(settings: SettingsDep) -> CancellationStore:
 CancellationsDep = Annotated[CancellationStore, Depends(get_cancellations)]
 
 
+def get_attachment_repository(settings: SettingsDep) -> AttachmentRepository:
+    return PostgresAttachmentRepository(get_sessionmaker(settings))
+
+
+AttachmentRepoDep = Annotated[AttachmentRepository, Depends(get_attachment_repository)]
+
+
 def get_send_text_message_handler(repo: RepoDep) -> SendTextMessageHandler:
     return SendTextMessageHandler(sessions=repo)
 
 
 def get_stream_assistant_response_handler(
-    repo: RepoDep, llm: LlmDep, cancellations: CancellationsDep, settings: SettingsDep
+    repo: RepoDep,
+    llm: LlmDep,
+    cancellations: CancellationsDep,
+    settings: SettingsDep,
+    attachments: AttachmentRepoDep,
 ) -> StreamAssistantResponseHandler:
     return StreamAssistantResponseHandler(
         sessions=repo,
         llm=llm,
         cancellations=cancellations,
         context_builder=ContextBuilder(window=settings.context_window),
+        attachments=attachments,
     )
 
 
@@ -183,13 +195,6 @@ CancelStreamDep = Annotated[CancelStreamHandler, Depends(get_cancel_stream_handl
 # ---------------------------------------------------------------------------
 # Attachment pipeline (Phase 6.8)
 # ---------------------------------------------------------------------------
-
-
-def get_attachment_repository(settings: SettingsDep) -> AttachmentRepository:
-    return PostgresAttachmentRepository(get_sessionmaker(settings))
-
-
-AttachmentRepoDep = Annotated[AttachmentRepository, Depends(get_attachment_repository)]
 
 
 @lru_cache(maxsize=1)

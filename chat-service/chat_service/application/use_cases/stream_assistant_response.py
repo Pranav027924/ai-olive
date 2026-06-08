@@ -25,9 +25,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+from chat_service.application.ports.attachment_repository import AttachmentRepository
 from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
+from chat_service.domain.entities.attachment import Attachment
 from chat_service.domain.entities.message import Message
 from chat_service.domain.errors import SessionAlreadyTerminal, SessionNotFound
 from chat_service.domain.services.context_builder import ContextBuilder
@@ -36,6 +38,23 @@ from chat_service.domain.value_objects.streaming_response import (
     StreamingResponse,
     StreamingState,
 )
+
+
+class _NoAttachmentRepository:
+    """Default AttachmentRepository — always returns an empty list.
+
+    Lets older call sites that don't care about attachments keep
+    constructing the handler with two ports.
+    """
+
+    async def save(self, attachment: Attachment) -> None:
+        return None
+
+    async def get(self, attachment_id: UUID) -> Attachment | None:
+        return None
+
+    async def list_for_session(self, session_id: UUID) -> list[Attachment]:
+        return []
 
 
 class _NoOpCancellationStore:
@@ -101,11 +120,13 @@ class StreamAssistantResponseHandler:
         llm: LLMClient,
         cancellations: CancellationStore | None = None,
         context_builder: ContextBuilder | None = None,
+        attachments: AttachmentRepository | None = None,
     ) -> None:
         self._sessions = sessions
         self._llm = llm
         self._cancellations: CancellationStore = cancellations or _NoOpCancellationStore()
         self._context_builder = context_builder or ContextBuilder()
+        self._attachments: AttachmentRepository = attachments or _NoAttachmentRepository()
 
     async def handle(self, cmd: StreamAssistantResponseCommand) -> AsyncIterator[StreamEvent]:
         session = await self._sessions.get(cmd.session_id)
@@ -123,6 +144,10 @@ class StreamAssistantResponseHandler:
 
         stream = StreamingResponse(session_id=session.id, message_id=assistant_msg_id)
         context = self._context_builder.build(session)
+        attachments = await self._attachments.list_for_session(session.id)
+        system_prompt = self._context_builder.compose_system_prompt(
+            session.system_prompt, attachments
+        )
 
         error_detail: str | None = None
         try:
@@ -131,7 +156,7 @@ class StreamAssistantResponseHandler:
                 message_id=assistant_msg_id,
                 messages=context,
                 config=session.config,
-                system_prompt=session.system_prompt,
+                system_prompt=system_prompt,
             ):
                 if await self._cancellations.is_cancelled(session.id):
                     stream.cancel()

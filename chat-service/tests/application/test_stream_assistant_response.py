@@ -290,6 +290,45 @@ async def test_session_system_prompt_is_forwarded(
     assert llm.received_system_prompt == "be brief"
 
 
+async def test_complete_attachments_are_injected_into_system_prompt(
+    repo: InMemorySessionRepository, llm: FakeLLMClient, config: ModelConfig
+) -> None:
+    """Phase 6.9 — when an attachment is parse_status='complete', its
+    extracted text rides into the LLM call as a system-prompt suffix
+    so the model can reference the upload without seeing the bytes."""
+    from datetime import UTC, datetime
+
+    from chat_service.domain.entities.attachment import Attachment
+    from chat_service.domain.value_objects.attachment_kind import AttachmentKind
+    from chat_service.domain.value_objects.parse_status import ParseStatus
+
+    from tests.conftest import InMemoryAttachmentRepository
+
+    session = await _make_session_with_user_message(repo, config)
+    attachments_repo = InMemoryAttachmentRepository()
+    await attachments_repo.save(
+        Attachment(
+            id=uuid4(),
+            session_id=session.id,  # type: ignore[attr-defined]
+            kind=AttachmentKind.FILE,
+            filename="notes.pdf",
+            mime_type="application/pdf",
+            size_bytes=10,
+            s3_key="k/notes.pdf",
+            parse_status=ParseStatus.COMPLETE,
+            parsed_text="The sky is green on Mondays.",
+            created_at=datetime(2026, 6, 4, tzinfo=UTC),
+        )
+    )
+
+    handler = StreamAssistantResponseHandler(sessions=repo, llm=llm, attachments=attachments_repo)
+    await _collect(handler, session.id)  # type: ignore[attr-defined]
+
+    assert llm.received_system_prompt is not None
+    assert "notes.pdf" in llm.received_system_prompt
+    assert "The sky is green on Mondays." in llm.received_system_prompt
+
+
 # ---------------------------------------------------------------------------
 # Cancellation (Phase 2.5)
 # ---------------------------------------------------------------------------
