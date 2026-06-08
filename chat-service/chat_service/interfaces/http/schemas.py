@@ -12,6 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from chat_service.domain.entities.attachment import Attachment
 from chat_service.domain.entities.session import Session
 
 Provider = Literal["openai", "anthropic", "gemini", "deepseek"]
@@ -76,6 +77,34 @@ class SessionView(BaseModel):
                 )
                 for m in session.messages
             ],
+        )
+
+
+class AttachmentView(BaseModel):
+    id: UUID
+    session_id: UUID
+    kind: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    parse_status: str
+    parsed_text: str | None
+    transcript: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, attachment: Attachment) -> AttachmentView:
+        return cls(
+            id=attachment.id,
+            session_id=attachment.session_id,
+            kind=attachment.kind.value,
+            filename=attachment.filename,
+            mime_type=attachment.mime_type,
+            size_bytes=attachment.size_bytes,
+            parse_status=attachment.parse_status.value,
+            parsed_text=attachment.parsed_text,
+            transcript=attachment.transcript,
+            created_at=attachment.created_at,
         )
 
 

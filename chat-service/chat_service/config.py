@@ -57,6 +57,16 @@ class ChatServiceSettings(BaseSettings):
     http_emitter_flush_interval_seconds: float = Field(default=2.0, gt=0.0)
     http_emitter_queue_size: int = Field(default=1000, ge=1)
 
+    # ---- Object storage (PRD §6.7) ----
+    s3_bucket: str = "olive-attachments"
+    s3_endpoint_url: str = "http://127.0.0.1:9000"
+    s3_access_key: str = "olive_dev_access"
+    s3_secret_key: str = "olive_dev_secret"  # noqa: S105 — local dev default
+    s3_region: str = "us-east-1"
+
+    # ---- Transcription (PRD §6.6) ----
+    whisper_model_size: str = "tiny"
+
     # ---- Dev-only auth shim until JWT lands in Phase 9.4 ----
     dev_user_id: UUID = UUID("00000000-0000-0000-0000-000000000001")
     dev_user_email: str = "dev@local"

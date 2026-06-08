@@ -11,9 +11,11 @@ from collections.abc import AsyncIterator, Iterable
 from uuid import UUID
 
 import pytest
+from chat_service.application.ports.attachment_repository import AttachmentRepository
 from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
+from chat_service.domain.entities.attachment import Attachment
 from chat_service.domain.entities.message import Message
 from chat_service.domain.entities.session import Session
 from chat_service.domain.value_objects.model_config import ModelConfig
@@ -129,9 +131,30 @@ class InMemoryCancellationStore(CancellationStore):
         self.clear_calls.append(session_id)
 
 
+class InMemoryAttachmentRepository(AttachmentRepository):
+    def __init__(self) -> None:
+        self._store: dict[UUID, Attachment] = {}
+
+    async def get(self, attachment_id: UUID) -> Attachment | None:
+        return self._store.get(attachment_id)
+
+    async def list_for_session(self, session_id: UUID) -> list[Attachment]:
+        rows = [a for a in self._store.values() if a.session_id == session_id]
+        rows.sort(key=lambda a: a.created_at)
+        return rows
+
+    async def save(self, attachment: Attachment) -> None:
+        self._store[attachment.id] = attachment
+
+
 @pytest.fixture
 def repo() -> InMemorySessionRepository:
     return InMemorySessionRepository()
+
+
+@pytest.fixture
+def attachments() -> InMemoryAttachmentRepository:
+    return InMemoryAttachmentRepository()
 
 
 @pytest.fixture

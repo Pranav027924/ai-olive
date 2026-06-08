@@ -42,3 +42,7 @@ class InvalidStreamState(ChatDomainError):
         super().__init__(f"Cannot {verb} a stream in state '{state}'.")
         self.verb = verb
         self.state = state
+
+
+class InvalidAttachmentState(ChatDomainError):
+    """Attempted to transition an Attachment from a non-pending state."""

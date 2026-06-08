@@ -12,28 +12,46 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
+from media_service.application.ports.object_storage import ObjectStorage
+from media_service.application.use_cases.parse_document import (
+    ParseDocumentHandler,
+    ParserRegistry,
+)
+from media_service.application.use_cases.transcribe_audio import TranscribeAudioHandler
+from media_service.infrastructure.parsing.docx_parser import DocxParser
+from media_service.infrastructure.parsing.pdf_parser import PdfParser
+from media_service.infrastructure.storage.s3_object_storage import S3ObjectStorage
+from media_service.infrastructure.transcription.faster_whisper_transcriber import (
+    FasterWhisperTranscriber,
+)
 from olive_sdk.application.emitter_port import EmitterPort
 from olive_sdk.infrastructure.emitters.composite_emitter import CompositeEmitter
 from olive_sdk.infrastructure.emitters.file_emitter import FileEmitter
 from olive_sdk.infrastructure.emitters.http_emitter import HttpEmitter
 from redis.asyncio import Redis
 
+from chat_service.application.ports.attachment_repository import AttachmentRepository
 from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
 from chat_service.application.use_cases.cancel_stream import CancelStreamHandler
 from chat_service.application.use_cases.create_session import CreateSessionHandler
 from chat_service.application.use_cases.list_sessions import ListSessionsHandler
+from chat_service.application.use_cases.process_attachment import ProcessAttachmentHandler
 from chat_service.application.use_cases.send_text_message import SendTextMessageHandler
 from chat_service.application.use_cases.stream_assistant_response import (
     StreamAssistantResponseHandler,
 )
+from chat_service.application.use_cases.upload_attachment import UploadAttachmentHandler
 from chat_service.config import ChatServiceSettings
 from chat_service.domain.services.context_builder import ContextBuilder
 from chat_service.infrastructure.cache.redis_cancellation_store import (
     RedisCancellationStore,
 )
 from chat_service.infrastructure.persistence.engine import get_sessionmaker
+from chat_service.infrastructure.persistence.postgres_attachment_repo import (
+    PostgresAttachmentRepository,
+)
 from chat_service.infrastructure.persistence.postgres_session_repo import (
     PostgresSessionRepository,
 )
@@ -160,3 +178,67 @@ StreamAssistantResponseDep = Annotated[
     StreamAssistantResponseHandler, Depends(get_stream_assistant_response_handler)
 ]
 CancelStreamDep = Annotated[CancelStreamHandler, Depends(get_cancel_stream_handler)]
+
+
+# ---------------------------------------------------------------------------
+# Attachment pipeline (Phase 6.8)
+# ---------------------------------------------------------------------------
+
+
+def get_attachment_repository(settings: SettingsDep) -> AttachmentRepository:
+    return PostgresAttachmentRepository(get_sessionmaker(settings))
+
+
+AttachmentRepoDep = Annotated[AttachmentRepository, Depends(get_attachment_repository)]
+
+
+@lru_cache(maxsize=1)
+def _object_storage() -> ObjectStorage:
+    settings = _settings()
+    return S3ObjectStorage(
+        bucket=settings.s3_bucket,
+        endpoint_url=settings.s3_endpoint_url,
+        access_key_id=settings.s3_access_key,
+        secret_access_key=settings.s3_secret_key,
+        region_name=settings.s3_region,
+    )
+
+
+def get_object_storage(settings: SettingsDep) -> ObjectStorage:
+    return _object_storage()
+
+
+ObjectStorageDep = Annotated[ObjectStorage, Depends(get_object_storage)]
+
+
+@lru_cache(maxsize=1)
+def _parse_document_handler() -> ParseDocumentHandler:
+    return ParseDocumentHandler(registry=ParserRegistry([PdfParser(), DocxParser()]))
+
+
+@lru_cache(maxsize=1)
+def _transcribe_audio_handler() -> TranscribeAudioHandler:
+    return TranscribeAudioHandler(
+        transcriber=FasterWhisperTranscriber(model_size=_settings().whisper_model_size)
+    )
+
+
+def get_upload_attachment_handler(
+    sessions: RepoDep, attachments: AttachmentRepoDep, storage: ObjectStorageDep
+) -> UploadAttachmentHandler:
+    return UploadAttachmentHandler(sessions=sessions, attachments=attachments, storage=storage)
+
+
+def get_process_attachment_handler(
+    attachments: AttachmentRepoDep, storage: ObjectStorageDep
+) -> ProcessAttachmentHandler:
+    return ProcessAttachmentHandler(
+        attachments=attachments,
+        storage=storage,
+        parser=_parse_document_handler(),
+        transcriber=_transcribe_audio_handler(),
+    )
+
+
+UploadAttachmentDep = Annotated[UploadAttachmentHandler, Depends(get_upload_attachment_handler)]
+ProcessAttachmentDep = Annotated[ProcessAttachmentHandler, Depends(get_process_attachment_handler)]
