@@ -60,6 +60,22 @@ migrate-worker-down: ## Roll back worker-service migrations (destructive).
 .PHONY: migrate-all
 migrate-all: migrate migrate-worker ## Apply both chat-service and worker-service migrations.
 
+CLICKHOUSE_HTTP ?= http://127.0.0.1:8123
+CLICKHOUSE_USER ?= olive
+CLICKHOUSE_PASSWORD ?= olive_dev_pw_ch
+CLICKHOUSE_DB ?= olive
+
+.PHONY: migrate-clickhouse
+migrate-clickhouse: ## Apply ClickHouse schema for analytics (Phase 7.4).
+	@for f in clickhouse/migrations/*.sql; do \
+	  echo "Applying $$f"; \
+	  curl --fail --silent --show-error \
+	    --user "$(CLICKHOUSE_USER):$(CLICKHOUSE_PASSWORD)" \
+	    --data-binary @"$$f" \
+	    "$(CLICKHOUSE_HTTP)/?database=$(CLICKHOUSE_DB)" \
+	    || exit 1; \
+	done
+
 .PHONY: worker
 worker: ## Run the worker-service drain loop.
 	$(UV) run python -m worker_service.interfaces.cli.run_worker
