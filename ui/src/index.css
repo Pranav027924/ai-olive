@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 40%;
+    --primary: 142 70% 35%;
+    --primary-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5% 90%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 10% 10%;
+  }
+
+  .dark {
+    --background: 240 10% 8%;
+    --foreground: 0 0% 96%;
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 5% 65%;
+    --primary: 142 60% 50%;
+    --primary-foreground: 240 10% 8%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 240 5% 20%;
+    --card: 240 10% 10%;
+    --card-foreground: 0 0% 96%;
+    --accent: 240 5% 16%;
+    --accent-foreground: 0 0% 96%;
+  }
+
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto;
+  }
+}

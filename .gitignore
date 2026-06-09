@@ -42,11 +42,13 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Node / UI (placeholder for Phase 8)
+# Node / UI
 node_modules/
 .next/
 .turbo/
 dist/
+ui/src/api/__generated__/
+ui/tsconfig.*.tsbuildinfo
 
 # Local data / logs
 *.log
