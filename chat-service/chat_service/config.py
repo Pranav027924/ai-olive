@@ -79,7 +79,15 @@ class ChatServiceSettings(BaseSettings):
     # ---- Transcription (PRD §6.6) ----
     whisper_model_size: str = "tiny"
 
-    # ---- Dev-only auth shim until JWT lands in Phase 9.4 ----
+    # ---- Auth (PRD §9.4) ----
+    # JWT is HS256 with a shared secret. ``disable_auth`` keeps the dev
+    # user-id shim so local dev, the UI, and the test suite work without
+    # minting tokens. Production MUST set DISABLE_AUTH=false + JWT_SECRET.
+    disable_auth: bool = True
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_audience: str = ""
+    jwt_issuer: str = ""
     dev_user_id: UUID = UUID("00000000-0000-0000-0000-000000000001")
     dev_user_email: str = "dev@local"
 

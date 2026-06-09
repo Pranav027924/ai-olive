@@ -24,7 +24,7 @@ from chat_service.interfaces.http.app import create_app
 from chat_service.interfaces.http.dependencies import (
     get_attachment_repository,
     get_cancellations,
-    get_dev_user_id,
+    get_current_user_id,
     get_llm,
     get_repository,
 )
@@ -87,7 +87,7 @@ def app(
 
     app.dependency_overrides[get_repository] = _repo
     app.dependency_overrides[get_llm] = _llm
-    app.dependency_overrides[get_dev_user_id] = _user
+    app.dependency_overrides[get_current_user_id] = _user
     app.dependency_overrides[get_cancellations] = _cancel
     app.dependency_overrides[get_attachment_repository] = _attachments
     return app

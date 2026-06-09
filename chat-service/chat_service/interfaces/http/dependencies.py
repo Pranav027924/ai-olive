@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Header, HTTPException, status
 from media_service.application.ports.object_storage import ObjectStorage
 from media_service.application.use_cases.parse_document import (
     ParseDocumentHandler,
@@ -45,6 +45,7 @@ from chat_service.application.use_cases.stream_assistant_response import (
 from chat_service.application.use_cases.upload_attachment import UploadAttachmentHandler
 from chat_service.config import ChatServiceSettings
 from chat_service.domain.services.context_builder import ContextBuilder
+from chat_service.infrastructure.auth.jwt_verifier import InvalidToken, JwtVerifier
 from chat_service.infrastructure.cache.redis_cancellation_store import (
     RedisCancellationStore,
 )
@@ -114,12 +115,43 @@ def get_llm(settings: SettingsDep) -> LLMClient:
 LlmDep = Annotated[LLMClient, Depends(get_llm)]
 
 
-def get_dev_user_id(settings: SettingsDep) -> UUID:
-    """Dev-only stand-in for the authenticated user (PRD §9.5)."""
-    return settings.dev_user_id
+def get_current_user_id(
+    settings: SettingsDep,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> UUID:
+    """Resolve the caller's user-id from a Bearer JWT (PRD §9.4).
+
+    When ``disable_auth`` is set (local dev / tests / the token-less UI)
+    we fall back to the dev user-id so the platform stays usable without
+    minting JWTs. Production sets DISABLE_AUTH=false + JWT_SECRET.
+    """
+    if settings.disable_auth:
+        return settings.dev_user_id
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing or malformed Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        verifier = JwtVerifier(
+            secret=settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+            audience=settings.jwt_audience,
+            issuer=settings.jwt_issuer,
+        )
+        return verifier.verify(token)
+    except (InvalidToken, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"invalid token: {exc}",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
 
 
-CurrentUserDep = Annotated[UUID, Depends(get_dev_user_id)]
+CurrentUserDep = Annotated[UUID, Depends(get_current_user_id)]
 
 
 # ---------------------------------------------------------------------------

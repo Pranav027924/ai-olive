@@ -29,7 +29,7 @@ from chat_service.domain.value_objects.session_status import SessionStatus
 from chat_service.interfaces.http.app import create_app
 from chat_service.interfaces.http.dependencies import (
     get_attachment_repository,
-    get_dev_user_id,
+    get_current_user_id,
     get_process_attachment_handler,
     get_repository,
     get_upload_attachment_handler,
@@ -130,7 +130,7 @@ def app(
 
     app.dependency_overrides[get_repository] = _repo
     app.dependency_overrides[get_attachment_repository] = _attachments
-    app.dependency_overrides[get_dev_user_id] = _user
+    app.dependency_overrides[get_current_user_id] = _user
     app.dependency_overrides[get_upload_attachment_handler] = _upload
     app.dependency_overrides[get_process_attachment_handler] = _process
     return app
