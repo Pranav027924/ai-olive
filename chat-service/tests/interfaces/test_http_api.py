@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
+from chat_service.application.ports.attachment_repository import AttachmentRepository
 from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
@@ -21,6 +22,7 @@ from chat_service.domain.value_objects.model_config import ModelConfig
 from chat_service.domain.value_objects.session_status import SessionStatus
 from chat_service.interfaces.http.app import create_app
 from chat_service.interfaces.http.dependencies import (
+    get_attachment_repository,
     get_cancellations,
     get_dev_user_id,
     get_llm,
@@ -31,6 +33,7 @@ from httpx import ASGITransport, AsyncClient
 
 from tests.conftest import (
     FakeLLMClient,
+    InMemoryAttachmentRepository,
     InMemoryCancellationStore,
     InMemorySessionRepository,
 )
@@ -54,10 +57,16 @@ def http_cancellations() -> InMemoryCancellationStore:
 
 
 @pytest.fixture
+def http_attachments() -> InMemoryAttachmentRepository:
+    return InMemoryAttachmentRepository()
+
+
+@pytest.fixture
 def app(
     http_repo: InMemorySessionRepository,
     http_llm: FakeLLMClient,
     http_cancellations: InMemoryCancellationStore,
+    http_attachments: InMemoryAttachmentRepository,
 ) -> FastAPI:
     app = create_app()
 
@@ -73,10 +82,14 @@ def app(
     def _cancel() -> CancellationStore:
         return http_cancellations
 
+    def _attachments() -> AttachmentRepository:
+        return http_attachments
+
     app.dependency_overrides[get_repository] = _repo
     app.dependency_overrides[get_llm] = _llm
     app.dependency_overrides[get_dev_user_id] = _user
     app.dependency_overrides[get_cancellations] = _cancel
+    app.dependency_overrides[get_attachment_repository] = _attachments
     return app
 
 
