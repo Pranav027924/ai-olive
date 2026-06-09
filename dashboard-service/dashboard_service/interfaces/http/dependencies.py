@@ -55,6 +55,26 @@ def get_metrics_reader(settings: SettingsDep) -> MetricsReader:
 ReaderDep = Annotated[MetricsReader, Depends(get_metrics_reader)]
 
 
+@lru_cache(maxsize=1)
+def _health_client() -> ChClient:
+    settings = _settings()
+    session = aiohttp.ClientSession()
+    return ChClient(
+        session,
+        url=settings.clickhouse_url,
+        user=settings.clickhouse_user,
+        password=settings.clickhouse_password,
+        database=settings.clickhouse_db,
+    )
+
+
+async def clickhouse_health_check() -> None:
+    """Readiness probe dependency: raises if ClickHouse is unreachable (PRD §9.3)."""
+    alive = await _health_client().is_alive()
+    if not alive:
+        raise RuntimeError("clickhouse is_alive() returned False")
+
+
 def get_latency_handler(reader: ReaderDep) -> LatencyPercentilesHandler:
     return LatencyPercentilesHandler(reader=reader)
 

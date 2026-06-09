@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import signal
 
+from olive_obs import configure_logging
 from redis.asyncio import Redis
 
 from worker_service.application.use_cases.process_log_event import (
@@ -61,6 +62,7 @@ def build_loop(settings: WorkerSettings) -> WorkerLoop:
 
 
 async def _amain() -> None:
+    configure_logging(service="worker-service")
     settings = WorkerSettings()
     loop = build_loop(settings)
 

@@ -140,6 +140,20 @@ def _redis_client() -> Redis:
     return Redis.from_url(_settings().redis_url, decode_responses=True)
 
 
+async def postgres_health_check() -> None:
+    """Readiness probe dependency: raises if Postgres is unreachable (PRD §9.3)."""
+    from sqlalchemy import text
+
+    sessionmaker = get_sessionmaker(_settings())
+    async with sessionmaker() as db:
+        await db.execute(text("SELECT 1"))
+
+
+async def redis_health_check() -> None:
+    """Readiness probe dependency: raises if Redis is unreachable (PRD §9.3)."""
+    await _redis_client().ping()
+
+
 def get_cancellations(settings: SettingsDep) -> CancellationStore:
     return RedisCancellationStore(
         redis=_redis_client(),

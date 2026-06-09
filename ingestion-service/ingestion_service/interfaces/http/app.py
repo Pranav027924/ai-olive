@@ -1,24 +1,27 @@
-"""FastAPI app factory for the ingestion service (Phase 4.6)."""
+"""FastAPI app factory for the ingestion service (Phase 4.6, obs in 9.1-9.3)."""
 
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from olive_obs import HealthRegistry, configure_logging, install_observability
 
 from ingestion_service.domain.errors import BatchTooLarge, EmptyBatch
+from ingestion_service.interfaces.http.dependencies import redis_health_check
 from ingestion_service.interfaces.http.routers import logs
 
 
 def create_app() -> FastAPI:
+    configure_logging(service="ingestion-service")
     app = FastAPI(
         title="AI-OLive Ingestion Service",
         version="0.1.0",
         description="PRD §6.3. POST /v1/logs → Redis Streams.",
     )
 
-    @app.get("/health", tags=["meta"])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    health = HealthRegistry()
+    health.add("redis", redis_health_check)
+    install_observability(app, service="ingestion-service", health=health)
 
     _register_domain_exception_handlers(app)
     app.include_router(logs.router)

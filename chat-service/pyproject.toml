@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
     "olive-sdk",
+    "olive-obs",
     "media-service",
     "pydantic>=2.7",
     "pydantic-settings>=2.5",
@@ -17,6 +18,7 @@ dependencies = [
     "redis>=5.0",
     "sse-starlette>=2.1",
     "python-multipart>=0.0.9",
+    "pyjwt>=2.9",
 ]
 
 [dependency-groups]
@@ -38,4 +40,5 @@ packages = ["chat_service"]
 [tool.uv.sources]
 olive-contracts = { workspace = true }
 olive-sdk = { workspace = true }
+olive-obs = { workspace = true }
 media-service = { workspace = true }

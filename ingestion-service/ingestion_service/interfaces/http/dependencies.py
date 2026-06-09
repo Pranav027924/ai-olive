@@ -33,6 +33,11 @@ def _redis_client() -> Redis:
     return Redis.from_url(_settings().redis_url, decode_responses=True)
 
 
+async def redis_health_check() -> None:
+    """Readiness probe dependency: raises if Redis is unreachable (PRD §9.3)."""
+    await _redis_client().ping()
+
+
 def get_log_stream(settings: SettingsDep) -> LogStream:
     return RedisStreamAdapter(
         redis=_redis_client(),

@@ -8,25 +8,32 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from olive_obs import HealthRegistry, configure_logging, install_observability
 
 from chat_service.domain.errors import (
     InvalidStatusTransition,
     SessionAlreadyTerminal,
     SessionNotFound,
 )
+from chat_service.interfaces.http.dependencies import (
+    postgres_health_check,
+    redis_health_check,
+)
 from chat_service.interfaces.http.routers import attachments, messages, sessions, stream
 
 
 def create_app() -> FastAPI:
+    configure_logging(service="chat-service")
     app = FastAPI(
         title="AI-OLive Chat Service",
         version="0.1.0",
         description="PRD §6.1. Sessions + messages. Streaming arrives in Phase 2.",
     )
 
-    @app.get("/health", tags=["meta"])
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    health = HealthRegistry()
+    health.add("postgres", postgres_health_check)
+    health.add("redis", redis_health_check)
+    install_observability(app, service="chat-service", health=health)
 
     _register_domain_exception_handlers(app)
 

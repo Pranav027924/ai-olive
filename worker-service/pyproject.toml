@@ -5,6 +5,7 @@ description = "Worker that drains the inference_logs Redis Stream into Postgres 
 requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
+    "olive-obs",
     "pydantic>=2.7",
     "pydantic-settings>=2.5",
     "sqlalchemy[asyncio]>=2.0",
@@ -32,3 +33,4 @@ packages = ["worker_service"]
 
 [tool.uv.sources]
 olive-contracts = { workspace = true }
+olive-obs = { workspace = true }

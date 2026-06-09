@@ -5,6 +5,7 @@ description = "HTTP intake → Redis Streams for LogEvents (PRD §6.3)"
 requires-python = ">=3.11"
 dependencies = [
     "olive-contracts",
+    "olive-obs",
     "pydantic>=2.7",
     "pydantic-settings>=2.5",
     "fastapi>=0.115",
@@ -29,3 +30,4 @@ packages = ["ingestion_service"]
 
 [tool.uv.sources]
 olive-contracts = { workspace = true }
+olive-obs = { workspace = true }
