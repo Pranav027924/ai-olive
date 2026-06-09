@@ -41,18 +41,23 @@ from olive_sdk.infrastructure.providers.base_adapter import (
     ProviderAdapter,
     UsageEvent,
 )
+from olive_sdk.infrastructure.providers.deepseek_adapter import DeepSeekAdapter
+from olive_sdk.infrastructure.providers.gemini_adapter import GeminiAdapter
+from olive_sdk.infrastructure.providers.openai_adapter import OpenAIAdapter
 
 SDK_VERSION: Final = "0.1.0"
 
 
 def _build_adapter(provider: str, *, api_key: str) -> ProviderAdapter:
-    """Default ProviderAdapter for a provider name.
-
-    Only ``anthropic`` is supported in Phase 3; OpenAI / Gemini /
-    DeepSeek adapters land in Phase 7.1.
-    """
+    """Default ProviderAdapter for a provider name."""
     if provider == "anthropic":
         return AnthropicAdapter(api_key=api_key)
+    if provider == "openai":
+        return OpenAIAdapter(api_key=api_key)
+    if provider == "gemini":
+        return GeminiAdapter(api_key=api_key)
+    if provider == "deepseek":
+        return DeepSeekAdapter(api_key=api_key)
     raise ValueError(f"unsupported provider: {provider!r}")
 
 

@@ -7,12 +7,14 @@ per call; this adapter just maps domain types to SDK types.
 One SDK ``LLMClient`` instance is cached per ``(provider, model)``
 pair (the SDK ties model + adapter at construction). Both share the
 same emitter so every chat call lands in the same JSONL stream
-(Phase 3.8) or HTTP batch (Phase 4.8).
+(Phase 3.8) or HTTP batch (Phase 4.8). Phase 7.3 makes provider
+routing per-session: the right API key is looked up from a
+``Mapping[provider, key]`` at SDK-instantiation time.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from uuid import UUID
 
 from olive_sdk.application.emitter_port import EmitterPort
@@ -32,9 +34,9 @@ _SDK_ROLE: dict[MessageRole, ChatRole] = {
 
 
 class SdkLlmClient(LLMClient):
-    def __init__(self, *, emitter: EmitterPort, api_key: str) -> None:
+    def __init__(self, *, emitter: EmitterPort, api_keys: Mapping[str, str]) -> None:
         self._emitter = emitter
-        self._api_key = api_key
+        self._api_keys = dict(api_keys)
         self._clients: dict[tuple[str, str], SdkLLMClient] = {}
 
     async def stream(
@@ -67,6 +69,6 @@ class SdkLlmClient(LLMClient):
                 provider=config.provider,
                 model=config.model,
                 emitter=self._emitter,
-                api_key=self._api_key,
+                api_key=self._api_keys.get(config.provider, ""),
             )
         return self._clients[key]

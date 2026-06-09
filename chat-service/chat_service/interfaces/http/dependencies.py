@@ -104,7 +104,7 @@ def _sdk_emitter() -> EmitterPort:
 @lru_cache(maxsize=1)
 def _sdk_llm_client() -> SdkLlmClient:
     settings = _settings()
-    return SdkLlmClient(emitter=_sdk_emitter(), api_key=settings.anthropic_api_key)
+    return SdkLlmClient(emitter=_sdk_emitter(), api_keys=settings.provider_api_keys)
 
 
 def get_llm(settings: SettingsDep) -> LLMClient:

@@ -36,10 +36,22 @@ class ChatServiceSettings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
 
-    # ---- LLM (used in Phase 1.8) ----
+    # ---- LLM (used in Phase 1.8; multi-provider in Phase 7.3) ----
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
+    deepseek_api_key: str = ""
     default_provider: str = "anthropic"
     default_model: str = "claude-opus-4-7"
+
+    @property
+    def provider_api_keys(self) -> dict[str, str]:
+        return {
+            "anthropic": self.anthropic_api_key,
+            "openai": self.openai_api_key,
+            "gemini": self.gemini_api_key,
+            "deepseek": self.deepseek_api_key,
+        }
 
     # ---- Behaviour ----
     context_window: int = Field(default=20, ge=1, le=200)
