@@ -34,7 +34,18 @@ class IngestionSettings(BaseSettings):
     http_port: int = 8001
 
     # ---- Auth (PRD §9.5) ----
+    # ``ingestion_api_keys`` is a comma-separated allow-list enabling
+    # zero-downtime rotation: add the new key, roll clients onto it, then
+    # drop the old one. ``ingestion_api_key`` (singular) is the legacy
+    # single-key var, still honoured as one more allowed key.
     ingestion_api_key: str = ""
+    ingestion_api_keys: str = ""
+
+    @property
+    def allowed_api_keys(self) -> frozenset[str]:
+        keys = {k.strip() for k in self.ingestion_api_keys.split(",")}
+        keys.add(self.ingestion_api_key.strip())
+        return frozenset(k for k in keys if k)
 
     @property
     def redis_url(self) -> str:

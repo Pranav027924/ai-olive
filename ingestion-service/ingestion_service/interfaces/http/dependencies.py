@@ -58,7 +58,7 @@ IngestLogsDep = Annotated[IngestLogsHandler, Depends(get_ingest_logs_handler)]
 
 @lru_cache(maxsize=1)
 def _auth_provider() -> AuthProvider:
-    return ApiKeyAuthProvider(expected_key=_settings().ingestion_api_key)
+    return ApiKeyAuthProvider(allowed_keys=_settings().allowed_api_keys)
 
 
 def get_auth_provider() -> AuthProvider:
