@@ -26,6 +26,7 @@ members = [
     "ingestion-service",
     "worker-service",
     "media-service",
+    "dashboard-service",
 ]
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,8 @@ module = [
     "botocore.*",
     "reportlab",
     "reportlab.*",
+    "aiochclient",
+    "aiochclient.*",
 ]
 ignore_missing_imports = true
 
