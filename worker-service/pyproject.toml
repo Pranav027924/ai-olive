@@ -11,6 +11,8 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.13",
     "redis>=5.0",
+    "aiochclient>=2.6",
+    "aiohttp>=3.10",
 ]
 
 [dependency-groups]

@@ -20,15 +20,30 @@ wired in by the CLI / DI).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from contracts.log_event import LogEvent
 
 from worker_service.application.ports.log_repository import LogRepository
+from worker_service.application.ports.metrics_sink import MetricsSink
 from worker_service.domain.entities.processed_log import ProcessedLog
 from worker_service.domain.services.cost_calculator import CostCalculator
 from worker_service.domain.services.idempotency_checker import IdempotencyChecker
 from worker_service.domain.services.redaction_pipeline import RedactionPipeline
+
+logger = logging.getLogger(__name__)
+
+
+class _NullMetricsSink:
+    async def record(self, processed: ProcessedLog) -> None:
+        return None
+
+    async def flush(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,11 +65,13 @@ class ProcessLogEventHandler:
         pipeline: RedactionPipeline,
         cost_calculator: CostCalculator,
         idempotency: IdempotencyChecker | None = None,
+        metrics_sink: MetricsSink | None = None,
     ) -> None:
         self._repo = repo
         self._pipeline = pipeline
         self._cost = cost_calculator
         self._idempotency = idempotency or IdempotencyChecker()
+        self._metrics_sink: MetricsSink = metrics_sink or _NullMetricsSink()
 
     async def handle(self, cmd: ProcessLogEventCommand) -> ProcessLogEventResult:
         event = cmd.event
@@ -82,4 +99,10 @@ class ProcessLogEventHandler:
         )
         await self._repo.insert(processed)
         self._idempotency.mark(event.event_id)
+        # Analytics mirror is best-effort: a sink failure must not
+        # roll back the Postgres write that already committed.
+        try:
+            await self._metrics_sink.record(processed)
+        except Exception:
+            logger.exception("metrics sink record failed; postgres insert preserved")
         return ProcessLogEventResult(inserted=True, processed=processed)

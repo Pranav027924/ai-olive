@@ -79,6 +79,15 @@ boto3 = [
 ]
 
 [[package]]
+name = "aiochclient"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sqlparse" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/de/a3a36250c54d86a1b489dd10071ecdef6e3eeacf43eb2411abcb31304838/aiochclient-2.7.0.tar.gz", hash = "sha256:839defc0e5222a6e07efabc88de39488baf2c827298ae8a8bfb3fc344c0f39aa", size = 250452, upload-time = "2026-06-04T13:22:11.326Z" }
+
+[[package]]
 name = "aiofiles"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2962,6 +2971,15 @@ asyncio = [
 ]
 
 [[package]]
+name = "sqlparse"
+version = "0.5.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/76/437d71068094df0726366574cf3432a4ed754217b436eb7429415cf2d480/sqlparse-0.5.5.tar.gz", hash = "sha256:e20d4a9b0b8585fdf63b10d30066c7c94c5d7a7ec47c889a2d83a3caa93ff28e", size = 120815, upload-time = "2025-12-19T07:17:45.073Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/4b/359f28a903c13438ef59ebeee215fb25da53066db67b305c125f1c6d2a25/sqlparse-0.5.5-py3-none-any.whl", hash = "sha256:12a08b3bf3eec877c519589833aed092e2444e68240a3577e8e26148acc7b1ba", size = 46138, upload-time = "2025-12-19T07:17:46.573Z" },
+]
+
+[[package]]
 name = "sse-starlette"
 version = "3.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3346,6 +3364,8 @@ name = "worker-service"
 version = "0.1.0"
 source = { editable = "worker-service" }
 dependencies = [
+    { name = "aiochclient" },
+    { name = "aiohttp" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "olive-contracts" },
@@ -3365,6 +3385,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiochclient", specifier = ">=2.6" },
+    { name = "aiohttp", specifier = ">=3.10" },
     { name = "alembic", specifier = ">=1.13" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "olive-contracts", editable = "shared/contracts" },
