@@ -19,7 +19,13 @@ from chat_service.interfaces.http.dependencies import (
     postgres_health_check,
     redis_health_check,
 )
-from chat_service.interfaces.http.routers import attachments, messages, sessions, stream
+from chat_service.interfaces.http.routers import (
+    attachments,
+    auth,
+    messages,
+    sessions,
+    stream,
+)
 
 
 def create_app() -> FastAPI:
@@ -37,6 +43,7 @@ def create_app() -> FastAPI:
 
     _register_domain_exception_handlers(app)
 
+    app.include_router(auth.router)
     app.include_router(sessions.router)
     app.include_router(messages.router)
     app.include_router(stream.router)

@@ -88,6 +88,8 @@ class ChatServiceSettings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_audience: str = ""
     jwt_issuer: str = ""
+    jwt_ttl_minutes: int = Field(default=60 * 24 * 7, ge=1)  # 7 days
+    allow_registration: bool = True
     dev_user_id: UUID = UUID("00000000-0000-0000-0000-000000000001")
     dev_user_email: str = "dev@local"
 

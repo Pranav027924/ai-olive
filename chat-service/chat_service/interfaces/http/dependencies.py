@@ -34,10 +34,13 @@ from chat_service.application.ports.attachment_repository import AttachmentRepos
 from chat_service.application.ports.cancellation_store import CancellationStore
 from chat_service.application.ports.llm_client import LLMClient
 from chat_service.application.ports.session_repository import SessionRepository
+from chat_service.application.ports.user_repository import UserRepository
+from chat_service.application.use_cases.authenticate_user import AuthenticateUserHandler
 from chat_service.application.use_cases.cancel_stream import CancelStreamHandler
 from chat_service.application.use_cases.create_session import CreateSessionHandler
 from chat_service.application.use_cases.list_sessions import ListSessionsHandler
 from chat_service.application.use_cases.process_attachment import ProcessAttachmentHandler
+from chat_service.application.use_cases.register_user import RegisterUserHandler
 from chat_service.application.use_cases.send_text_message import SendTextMessageHandler
 from chat_service.application.use_cases.stream_assistant_response import (
     StreamAssistantResponseHandler,
@@ -45,7 +48,9 @@ from chat_service.application.use_cases.stream_assistant_response import (
 from chat_service.application.use_cases.upload_attachment import UploadAttachmentHandler
 from chat_service.config import ChatServiceSettings
 from chat_service.domain.services.context_builder import ContextBuilder
+from chat_service.infrastructure.auth.jwt_issuer import JwtIssuer
 from chat_service.infrastructure.auth.jwt_verifier import InvalidToken, JwtVerifier
+from chat_service.infrastructure.auth.password_hasher import BcryptPasswordHasher
 from chat_service.infrastructure.cache.redis_cancellation_store import (
     RedisCancellationStore,
 )
@@ -55,6 +60,9 @@ from chat_service.infrastructure.persistence.postgres_attachment_repo import (
 )
 from chat_service.infrastructure.persistence.postgres_session_repo import (
     PostgresSessionRepository,
+)
+from chat_service.infrastructure.persistence.postgres_user_repo import (
+    PostgresUserRepository,
 )
 from chat_service.infrastructure.sdk.sdk_llm_client import SdkLlmClient
 
@@ -152,6 +160,46 @@ def get_current_user_id(
 
 
 CurrentUserDep = Annotated[UUID, Depends(get_current_user_id)]
+
+
+# ---------------------------------------------------------------------------
+# Auth: accounts + token minting (Phase 9.4 login)
+# ---------------------------------------------------------------------------
+
+
+def get_user_repository(settings: SettingsDep) -> UserRepository:
+    return PostgresUserRepository(get_sessionmaker(settings))
+
+
+UserRepoDep = Annotated[UserRepository, Depends(get_user_repository)]
+
+
+@lru_cache(maxsize=1)
+def _password_hasher() -> BcryptPasswordHasher:
+    return BcryptPasswordHasher()
+
+
+def get_jwt_issuer(settings: SettingsDep) -> JwtIssuer:
+    return JwtIssuer(
+        secret=settings.jwt_secret or "dev-insecure-secret-change-me-32-bytes-min",
+        algorithm=settings.jwt_algorithm,
+        ttl_minutes=settings.jwt_ttl_minutes,
+        audience=settings.jwt_audience,
+        issuer=settings.jwt_issuer,
+    )
+
+
+def get_register_user_handler(users: UserRepoDep) -> RegisterUserHandler:
+    return RegisterUserHandler(users=users, hasher=_password_hasher())
+
+
+def get_authenticate_user_handler(users: UserRepoDep) -> AuthenticateUserHandler:
+    return AuthenticateUserHandler(users=users, hasher=_password_hasher())
+
+
+JwtIssuerDep = Annotated[JwtIssuer, Depends(get_jwt_issuer)]
+RegisterUserDep = Annotated[RegisterUserHandler, Depends(get_register_user_handler)]
+AuthenticateUserDep = Annotated[AuthenticateUserHandler, Depends(get_authenticate_user_handler)]
 
 
 # ---------------------------------------------------------------------------

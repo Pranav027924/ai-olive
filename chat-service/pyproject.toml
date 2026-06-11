@@ -19,6 +19,7 @@ dependencies = [
     "sse-starlette>=2.1",
     "python-multipart>=0.0.9",
     "pyjwt>=2.9",
+    "bcrypt>=4.1",
 ]
 
 [dependency-groups]

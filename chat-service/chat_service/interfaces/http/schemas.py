@@ -14,8 +14,38 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from chat_service.domain.entities.attachment import Attachment
 from chat_service.domain.entities.session import Session
+from chat_service.domain.entities.user import User
 
 Provider = Literal["openai", "anthropic", "gemini", "deepseek"]
+
+
+class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password: str = Field(min_length=8, max_length=200)
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class AuthUserView(BaseModel):
+    id: UUID
+    email: str
+
+    @classmethod
+    def from_domain(cls, user: User) -> AuthUserView:
+        return cls(id=user.id, email=user.email)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"  # noqa: S105 — OAuth token type label, not a secret
+    user: AuthUserView
 
 
 class CreateSessionRequest(BaseModel):

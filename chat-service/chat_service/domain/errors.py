@@ -46,3 +46,11 @@ class InvalidStreamState(ChatDomainError):
 
 class InvalidAttachmentState(ChatDomainError):
     """Attempted to transition an Attachment from a non-pending state."""
+
+
+class EmailAlreadyRegistered(ChatDomainError):
+    """Registration attempted with an email that already has an account."""
+
+
+class InvalidCredentials(ChatDomainError):
+    """Login failed: unknown email or wrong password."""
