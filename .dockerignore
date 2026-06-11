@@ -1,0 +1,31 @@
+# Keep the Docker build context small + reproducible.
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.uv-cache
+
+# Node / UI (built by its own Dockerfile)
+ui/node_modules
+ui/dist
+ui/playwright-report
+ui/test-results
+
+# Local env + data
+.env
+.env.*
+!.env.example
+logs/
+data/
+*.log
+
+# Docs / tooling not needed at build time
+*.md
+k8s/
+load/
+htmlcov/
+coverage.xml
