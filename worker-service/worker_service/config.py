@@ -37,6 +37,10 @@ class WorkerSettings(BaseSettings):
     consumer_group: str = "log_processors"
     consumer_name: str = "worker-1"
 
+    # ---- Dead-letter queue (PRD §9.6) ----
+    dlq_stream_name: str = "inference_logs_dlq"
+    dlq_maxlen: int = Field(default=100_000, ge=1)
+
     # ---- Worker loop ----
     batch_size: int = Field(default=10, ge=1, le=1000)
     poll_block_ms: int = Field(default=5000, ge=100, le=60000)

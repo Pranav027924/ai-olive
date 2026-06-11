@@ -7,9 +7,9 @@ the next loop iteration exits — used by the CLI's SIGTERM/SIGINT
 handlers.
 
 Failure semantics:
-- A pydantic ``ValidationError`` on the inbound event payload is
-  considered a poison message: we ACK it so it doesn't loop forever.
-  Dead-letter handling lands in Phase 9.6.
+- A pydantic ``ValidationError`` on the inbound event payload is a
+  poison message: it's routed to the dead-letter stream (PRD §9.6)
+  and then ACKed so it doesn't redeliver forever.
 - Any other exception during ``handle`` is treated as transient: the
   message is left un-acked so Redis Streams redelivers it after the
   group's pending timeout.
@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import asyncio
 
+import structlog
 from contracts.log_event import LogEvent
 from pydantic import ValidationError
 
+from worker_service.application.ports.dead_letter_sink import DeadLetterSink
 from worker_service.application.ports.stream_consumer import StreamConsumer, StreamMessage
 from worker_service.application.use_cases.process_log_event import (
     ProcessLogEventCommand,
@@ -31,6 +33,13 @@ from worker_service.application.use_cases.process_log_event import (
 DEFAULT_BATCH_SIZE = 10
 DEFAULT_POLL_BLOCK_MS = 5000
 
+logger = structlog.get_logger("worker.loop")
+
+
+class _NullDeadLetterSink:
+    async def send(self, message: StreamMessage, *, reason: str) -> None:
+        return None
+
 
 class WorkerLoop:
     def __init__(
@@ -38,11 +47,13 @@ class WorkerLoop:
         *,
         consumer: StreamConsumer,
         handler: ProcessLogEventHandler,
+        dead_letter: DeadLetterSink | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
         poll_block_ms: int = DEFAULT_POLL_BLOCK_MS,
     ) -> None:
         self._consumer = consumer
         self._handler = handler
+        self._dead_letter: DeadLetterSink = dead_letter or _NullDeadLetterSink()
         self._batch_size = batch_size
         self._poll_block_ms = poll_block_ms
         self._shutdown = asyncio.Event()
@@ -77,15 +88,26 @@ class WorkerLoop:
             await self.run_once()
 
     async def _process(self, message: StreamMessage) -> bool:
+        structlog.contextvars.bind_contextvars(stream_message_id=message.message_id)
+        try:
+            return await self._process_inner(message)
+        finally:
+            structlog.contextvars.unbind_contextvars("stream_message_id")
+
+    async def _process_inner(self, message: StreamMessage) -> bool:
         raw = message.payload.get("event", "")
         try:
             event = LogEvent.model_validate_json(raw)
-        except ValidationError:
-            # Poison: ack so it doesn't redeliver forever. DLQ in Phase 9.6.
+        except ValidationError as exc:
+            # Poison: route to the dead-letter stream, then ack so it
+            # doesn't redeliver forever (PRD §9.6).
+            await self._dead_letter.send(message, reason=f"ValidationError: {exc}")
+            logger.warning("dead_lettered_poison_message", error=str(exc))
             return True
         try:
             await self._handler.handle(ProcessLogEventCommand(event=event))
-        except Exception:
+        except Exception as exc:
             # Transient failure: don't ack so Redis redelivers.
+            logger.error("transient_processing_failure", error=str(exc))
             return False
         return True

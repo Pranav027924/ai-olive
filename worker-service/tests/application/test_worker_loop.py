@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from contracts.log_event import LogEvent
+from worker_service.application.ports.dead_letter_sink import DeadLetterSink
 from worker_service.application.ports.log_repository import LogRepository
 from worker_service.application.ports.stream_consumer import StreamConsumer, StreamMessage
 from worker_service.application.use_cases.process_log_event import ProcessLogEventHandler
@@ -53,6 +54,14 @@ class _InMemoryLogRepository(LogRepository):
             raise RuntimeError("simulated postgres outage")
         self._ids.add(processed.id)
         self.inserted.append(processed)
+
+
+class _RecordingDeadLetterSink(DeadLetterSink):
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def send(self, message: StreamMessage, *, reason: str) -> None:
+        self.sent.append((message.message_id, reason))
 
 
 def _event() -> LogEvent:
@@ -159,6 +168,55 @@ async def test_mixed_batch_only_acks_the_successful_ones() -> None:
     assert processed == 2
     assert set(consumer.acked) == {"0-1", "0-2"}
     assert len(repo.inserted) == 1
+
+
+# ---------------------------------------------------------------------------
+# Dead-letter queue (Phase 9.6)
+# ---------------------------------------------------------------------------
+
+
+async def test_poison_message_is_routed_to_dead_letter_then_acked() -> None:
+    bad = StreamMessage(message_id="0-1", payload={"event": "{not json}"})
+    consumer = _InMemoryConsumer([[bad]])
+    repo = _InMemoryLogRepository()
+    dlq = _RecordingDeadLetterSink()
+    loop = WorkerLoop(consumer=consumer, handler=_handler(repo), dead_letter=dlq)
+
+    processed = await loop.run_once()
+
+    assert processed == 1
+    assert consumer.acked == ["0-1"]
+    assert len(dlq.sent) == 1
+    sent_id, reason = dlq.sent[0]
+    assert sent_id == "0-1"
+    assert "ValidationError" in reason
+
+
+async def test_valid_message_is_not_dead_lettered() -> None:
+    consumer = _InMemoryConsumer([[_message(_event(), "0-1")]])
+    repo = _InMemoryLogRepository()
+    dlq = _RecordingDeadLetterSink()
+    loop = WorkerLoop(consumer=consumer, handler=_handler(repo), dead_letter=dlq)
+
+    await loop.run_once()
+
+    assert dlq.sent == []
+    assert len(repo.inserted) == 1
+
+
+async def test_transient_failure_is_not_dead_lettered_and_not_acked() -> None:
+    """A handler exception is transient, not poison: it must redeliver,
+    so it is neither ACKed nor sent to the DLQ."""
+    consumer = _InMemoryConsumer([[_message(_event(), "0-1")]])
+    repo = _InMemoryLogRepository(raise_on_insert=True)
+    dlq = _RecordingDeadLetterSink()
+    loop = WorkerLoop(consumer=consumer, handler=_handler(repo), dead_letter=dlq)
+
+    processed = await loop.run_once()
+
+    assert processed == 0
+    assert consumer.acked == []
+    assert dlq.sent == []
 
 
 # ---------------------------------------------------------------------------

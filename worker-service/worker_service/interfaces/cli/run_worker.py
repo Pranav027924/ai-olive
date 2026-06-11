@@ -34,6 +34,9 @@ from worker_service.infrastructure.persistence.postgres_log_repo import (
     PostgresLogRepository,
 )
 from worker_service.infrastructure.redaction.regex_redactor import default_pipeline
+from worker_service.infrastructure.streams.redis_dead_letter_sink import (
+    RedisDeadLetterSink,
+)
 from worker_service.infrastructure.streams.redis_stream_consumer import (
     RedisStreamConsumer,
 )
@@ -47,6 +50,11 @@ def build_loop(settings: WorkerSettings) -> WorkerLoop:
         group=settings.consumer_group,
         consumer_name=settings.consumer_name,
     )
+    dead_letter = RedisDeadLetterSink(
+        redis=redis_client,
+        stream=settings.dlq_stream_name,
+        maxlen=settings.dlq_maxlen,
+    )
     repo = PostgresLogRepository(get_sessionmaker(settings))
     handler = ProcessLogEventHandler(
         repo=repo,
@@ -56,6 +64,7 @@ def build_loop(settings: WorkerSettings) -> WorkerLoop:
     return WorkerLoop(
         consumer=consumer,
         handler=handler,
+        dead_letter=dead_letter,
         batch_size=settings.batch_size,
         poll_block_ms=settings.poll_block_ms,
     )
