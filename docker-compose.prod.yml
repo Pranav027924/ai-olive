@@ -1,0 +1,203 @@
+# Production-style stack (PRD §9.9).
+#
+# Brings up infra + all app services from the per-service Dockerfiles,
+# with healthchecks, dependency ordering, resource limits, and one-shot
+# migration jobs. Intended for a single-host deploy or a local
+# production rehearsal; the Kubernetes manifests (k8s/) are the real
+# cluster target.
+#
+#   cp .env.example .env   # then set real secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Required .env values for production: DISABLE_AUTH=false, a >=32-byte
+# JWT_SECRET, INGESTION_API_KEYS, and the provider API keys you use.
+
+name: ai-olive-prod
+
+x-restart: &restart unless-stopped
+
+services:
+  # ---------------------------------------------------------------- infra
+  postgres:
+    image: postgres:16-alpine
+    restart: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-olive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-olive}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-olive} -d ${POSTGRES_DB:-olive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  redis:
+    image: redis:7-alpine
+    restart: *restart
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512m }
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: *restart
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-olive}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.10-alpine
+    restart: *restart
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-olive}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-olive}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 2g }
+
+  # ----------------------------------------------------------- migrations
+  chat-migrate:
+    build: { context: ., dockerfile: docker/chat-service.Dockerfile }
+    image: ai-olive/chat-service:latest
+    restart: "no"
+    command: ["sh", "-c", "cd /app/chat-service && alembic upgrade head"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-migrate:
+    build: { context: ., dockerfile: docker/worker-service.Dockerfile }
+    image: ai-olive/worker-service:latest
+    restart: "no"
+    command: ["sh", "-c", "cd /app/worker-service && alembic upgrade head"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # ------------------------------------------------------------- services
+  chat-service:
+    build: { context: ., dockerfile: docker/chat-service.Dockerfile }
+    image: ai-olive/chat-service:latest
+    restart: *restart
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      S3_ENDPOINT_URL: http://minio:9000
+      INGESTION_URL: http://ingestion-service:8001/v1/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      chat-migrate: { condition: service_completed_successfully }
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  ingestion-service:
+    build: { context: ., dockerfile: docker/ingestion-service.Dockerfile }
+    image: ai-olive/ingestion-service:latest
+    restart: *restart
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512m }
+
+  worker-service:
+    build: { context: ., dockerfile: docker/worker-service.Dockerfile }
+    image: ai-olive/worker-service:latest
+    restart: *restart
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      CLICKHOUSE_URL: http://clickhouse:8123
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      worker-migrate: { condition: service_completed_successfully }
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  dashboard-service:
+    build: { context: ., dockerfile: docker/dashboard-service.Dockerfile }
+    image: ai-olive/dashboard-service:latest
+    restart: *restart
+    env_file: .env
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+    ports:
+      - "8004:8004"
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512m }
+
+  ui:
+    build: { context: ., dockerfile: docker/ui.Dockerfile }
+    image: ai-olive/ui:latest
+    restart: *restart
+    ports:
+      - "8080:8080"
+    depends_on:
+      - chat-service
+      - dashboard-service
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  clickhouse_data:
