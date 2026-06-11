@@ -84,13 +84,8 @@ export function ChatView(): JSX.Element {
     stream.status === "streaming" || (stream.status === "completed" && !lastIsAssistant);
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto]">
-      {/* Slim header */}
-      <header className="flex items-center gap-2 px-4 py-3">
-        <span className="truncate text-sm font-medium">{session.data.title || "New chat"}</span>
-      </header>
-
-      {/* Transcript */}
+    <div className="grid h-full grid-rows-[1fr_auto]">
+      {/* Transcript (chat title lives in the sidebar, not here) */}
       <div ref={scroller} className="overflow-y-auto scrollbar-thin" data-testid="transcript">
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
           {messages.map((m) => (
