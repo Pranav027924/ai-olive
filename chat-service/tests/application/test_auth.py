@@ -47,9 +47,12 @@ def _handlers() -> tuple[_InMemoryUsers, RegisterUserHandler, AuthenticateUserHa
 
 async def test_register_creates_a_hashed_user() -> None:
     users, register, _ = _handlers()
-    user = await register.handle(RegisterUserCommand(email="A@Example.com ", password="hunter2pass"))
+    user = await register.handle(
+        RegisterUserCommand(email="A@Example.com ", password="hunter2pass")
+    )
     assert user.email == "a@example.com"  # normalised
-    assert user.password_hash and user.password_hash != "hunter2pass"  # hashed, not plaintext
+    assert user.password_hash is not None
+    assert user.password_hash != "hunter2pass"  # hashed, not plaintext
     assert await users.get_by_email("a@example.com") is not None
 
 
@@ -65,7 +68,9 @@ async def test_login_succeeds_with_correct_password() -> None:
     created = await register.handle(
         RegisterUserCommand(email="me@example.com", password="correct-horse")
     )
-    authed = await login.handle(AuthenticateUserCommand(email="me@example.com", password="correct-horse"))
+    authed = await login.handle(
+        AuthenticateUserCommand(email="me@example.com", password="correct-horse")
+    )
     assert authed.id == created.id
 
 
@@ -79,7 +84,9 @@ async def test_login_fails_with_wrong_password() -> None:
 async def test_login_fails_for_unknown_email() -> None:
     _, _, login = _handlers()
     with pytest.raises(InvalidCredentials):
-        await login.handle(AuthenticateUserCommand(email="nobody@example.com", password="whatever1"))
+        await login.handle(
+            AuthenticateUserCommand(email="nobody@example.com", password="whatever1")
+        )
 
 
 def test_password_hasher_roundtrip_and_rejects_wrong() -> None:

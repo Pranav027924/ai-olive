@@ -67,3 +67,8 @@ async def get_session(session_id: UUID, repo: RepoDep) -> SessionView:
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session not found")
     return SessionView.from_domain(session)
+
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(session_id: UUID, repo: RepoDep, _user: CurrentUserDep) -> None:
+    await repo.delete(session_id)

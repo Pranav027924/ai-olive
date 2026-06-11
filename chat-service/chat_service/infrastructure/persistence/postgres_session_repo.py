@@ -89,6 +89,12 @@ class PostgresSessionRepository(SessionRepository):
                     )
                 )
 
+    async def delete(self, session_id: UUID) -> None:
+        async with self._sessionmaker() as db, db.begin():
+            row = await db.scalar(select(SessionRow).where(SessionRow.id == session_id))
+            if row is not None:
+                await db.delete(row)
+
     async def list_for_user(
         self,
         user_id: UUID,

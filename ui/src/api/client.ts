@@ -5,6 +5,8 @@
  * `/api/dashboard` → 127.0.0.1:8004 (see vite.config.ts). In prod
  * builds these paths land on whatever ingress is configured.
  */
+import { useAuthStore } from "@/stores/auth";
+
 import type {
   AttachmentView,
   CostView,
@@ -13,6 +15,7 @@ import type {
   LatencyView,
   SessionView,
   ThroughputView,
+  TokenResponse,
   WindowKey,
 } from "./types";
 
@@ -25,16 +28,52 @@ class HttpError extends Error {
   }
 }
 
+/** Bearer header from the auth store, if logged in. */
+export function authHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function handleUnauthorized(status: number, url: string): void {
+  // A 401 on a normal request means the session expired / is required.
+  // (Don't trip the global redirect on the login/register calls themselves.)
+  if (status === 401 && !url.includes("/auth/")) {
+    useAuthStore.getState().clearAuth();
+    useAuthStore.getState().setUnauthorized(true);
+  }
+}
+
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(init?.headers ?? {}),
+    },
     ...init,
   });
   if (!response.ok) {
+    handleUnauthorized(response.status, input);
     throw new HttpError(response.status, await response.text());
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+// ---------- Auth ----------
+
+export function register(email: string, password: string): Promise<TokenResponse> {
+  return request<TokenResponse>(`${CHAT_BASE}/auth/register`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function login(email: string, password: string): Promise<TokenResponse> {
+  return request<TokenResponse>(`${CHAT_BASE}/auth/login`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 }
 
 // ---------- Sessions ----------
@@ -52,6 +91,10 @@ export function createSession(body: CreateSessionRequest): Promise<SessionView> 
 
 export function getSession(sessionId: string): Promise<SessionView> {
   return request<SessionView>(`${CHAT_BASE}/sessions/${sessionId}`);
+}
+
+export function deleteSession(sessionId: string): Promise<void> {
+  return request<void>(`${CHAT_BASE}/sessions/${sessionId}`, { method: "DELETE" });
 }
 
 // ---------- Messages ----------
@@ -86,9 +129,11 @@ async function uploadAttachment(
   form.append("file", file);
   const response = await fetch(`${CHAT_BASE}/sessions/${sessionId}/${endpoint}`, {
     method: "POST",
+    headers: authHeaders(),
     body: form,
   });
   if (!response.ok) {
+    handleUnauthorized(response.status, `${CHAT_BASE}/sessions/${sessionId}/${endpoint}`);
     throw new HttpError(response.status, await response.text());
   }
   return (await response.json()) as AttachmentView;

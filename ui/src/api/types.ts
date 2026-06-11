@@ -8,6 +8,17 @@
 
 export type Provider = "anthropic" | "openai" | "gemini" | "deepseek";
 
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
 export interface MessageView {
   id: string;
   role: "user" | "assistant" | "system" | "tool";

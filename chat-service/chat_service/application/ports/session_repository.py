@@ -32,3 +32,6 @@ class SessionRepository(Protocol):
         offset: int = 0,
     ) -> list[Session]:
         """List sessions for ``user_id``, newest first, optionally status-filtered."""
+
+    async def delete(self, session_id: UUID) -> None:
+        """Hard-delete a session (messages + attachments cascade). Idempotent."""

@@ -34,6 +34,9 @@ class InMemorySessionRepository(SessionRepository):
     async def save(self, session: Session) -> None:
         self._store[session.id] = session
 
+    async def delete(self, session_id: UUID) -> None:
+        self._store.pop(session_id, None)
+
     async def list_for_user(
         self,
         user_id: UUID,

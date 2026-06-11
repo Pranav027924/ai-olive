@@ -1,21 +1,20 @@
 import { Route, Routes } from "react-router-dom";
 
+import { LoginPage } from "@/features/auth/LoginPage";
 import { ChatView } from "@/features/chat/ChatView";
 import { Dashboard } from "@/features/dashboard/Dashboard";
 import { HomeChat } from "@/features/home/HomeChat";
-import { Sidebar } from "@/features/layout/Sidebar";
+import { Shell } from "@/features/layout/Shell";
 
 export function App(): JSX.Element {
   return (
-    <div className="flex h-full bg-background text-foreground">
-      <Sidebar />
-      <main className="min-w-0 flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<HomeChat />} />
-          <Route path="/sessions/:sessionId" element={<ChatView />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<Shell />}>
+        <Route path="/" element={<HomeChat />} />
+        <Route path="/sessions/:sessionId" element={<ChatView />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Route>
+    </Routes>
   );
 }

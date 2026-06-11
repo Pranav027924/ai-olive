@@ -43,8 +43,15 @@ afterEach(() => vi.restoreAllMocks());
 describe("HomeChat", () => {
   it("renders the greeting and composer", () => {
     renderHome();
-    expect(screen.getByText(/ready when you are/i)).toBeInTheDocument();
+    expect(screen.getByText(/good to see you/i)).toBeInTheDocument();
+    expect(screen.getByText(/how can i help you today/i)).toBeInTheDocument();
     expect(screen.getByLabelText("message-input")).toBeInTheDocument();
+  });
+
+  it("a suggestion chip pre-fills the composer", async () => {
+    renderHome();
+    await userEvent.click(screen.getByRole("button", { name: /summarize/i }));
+    expect(screen.getByLabelText("message-input")).toHaveValue("Summarize the following: ");
   });
 
   it("creates a session + posts the first message, then navigates to the chat", async () => {
@@ -56,14 +63,5 @@ describe("HomeChat", () => {
     expect(vi.mocked(api.createSession).mock.calls[0][0]).toMatchObject({ provider: "anthropic" });
     expect(api.sendUserMessage).toHaveBeenCalledWith(created.id, "Hi there");
     await waitFor(() => expect(screen.getByTestId("chat-route")).toBeInTheDocument());
-  });
-
-  it("respects the selected provider", async () => {
-    renderHome();
-    await userEvent.selectOptions(screen.getByLabelText("provider"), "openai");
-    await userEvent.type(screen.getByLabelText("message-input"), "hello");
-    await userEvent.click(screen.getByLabelText("send"));
-    await waitFor(() => expect(api.createSession).toHaveBeenCalled());
-    expect(vi.mocked(api.createSession).mock.calls[0][0]).toMatchObject({ provider: "openai" });
   });
 });

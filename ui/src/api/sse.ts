@@ -7,7 +7,7 @@
  * connecting — error-prone. Using fetch + a streaming reader keeps
  * the parser in our hands.
  */
-import { CHAT_BASE } from "./client";
+import { authHeaders, CHAT_BASE } from "./client";
 
 export interface ChatStreamHandlers {
   onStarted?: (payload: { assistant_message_id: string; seq: number }) => void;
@@ -27,7 +27,7 @@ export async function streamChat(
 ): Promise<void> {
   const response = await fetch(`${CHAT_BASE}/chat/${sessionId}/stream`, {
     method: "GET",
-    headers: { Accept: "text/event-stream" },
+    headers: { Accept: "text/event-stream", ...authHeaders() },
     signal,
   });
   if (!response.body) {
