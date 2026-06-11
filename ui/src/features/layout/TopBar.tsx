@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { Provider } from "@/api/types";
+import { Dropdown } from "@/components/ui/dropdown";
 import { PROVIDERS } from "@/lib/providers";
 import { useAuthStore } from "@/stores/auth";
 import { usePrefsStore } from "@/stores/prefs";
@@ -23,18 +24,12 @@ export function TopBar(): JSX.Element {
 
   return (
     <div className="flex items-center justify-end gap-2 px-4 py-2.5">
-      <select
-        value={provider}
-        onChange={(e) => setProvider(e.target.value as Provider)}
+      <Dropdown<Provider>
         aria-label="provider"
-        className="rounded-full border border-border bg-background px-3.5 py-1.5 text-sm hover:bg-accent focus:outline-none"
-      >
-        {PROVIDERS.map((p) => (
-          <option key={p.value} value={p.value}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+        value={provider}
+        onChange={setProvider}
+        options={PROVIDERS.map((p) => ({ value: p.value, label: p.label, hint: p.defaultModel }))}
+      />
 
       <button
         onClick={toggleTheme}

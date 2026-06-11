@@ -26,6 +26,7 @@
 13. [Deployment](#13-deployment)
 14. [How it was built — phase history](#14-how-it-was-built--phase-history)
 15. [Glossary](#15-glossary)
+16. [Reading guide for engineers](#16-reading-guide-for-engineers)
 
 ---
 
@@ -735,4 +736,137 @@ whole stack runs together.
   of the write model (`logs.inference_logs`) the dashboard reads from.
 - **SSE** — Server-Sent Events; the one-way HTTP stream used to push LLM tokens
   to the browser.
+
+---
+
+## 16. Reading guide for engineers
+
+A concrete path from zero to productive in this repo. Follow it in order; it's
+designed so each step builds on the last.
+
+### 16.1 The 30-minute orientation
+
+1. **`PRD.md` §1–4** — the *why*, the requirements, and the intended shape. It's
+   the source of truth.
+2. **This document §1–3** — what it is, the topology diagram, and the
+   end-to-end flows.
+3. Skim **§4** (principles) and **§6** (repo structure) so the folder names mean
+   something.
+
+### 16.2 The one mental model that unlocks everything
+
+Every service is the **same four layers**, with one rule: **dependencies point
+inward** (outer layers know inner ones, never the reverse).
+
 ```
+ interfaces  ──►  application  ──►  domain
+ (FastAPI/CLI)    (use cases +       (pure types
+       │           ports)             & logic)
+       └────────►  infrastructure ───┘
+                   (adapters: Postgres, Redis, S3, provider SDKs)
+```
+
+- **domain/** — entities, value objects, domain services. Pure Python, no I/O.
+- **application/** — `use_cases/` (orchestration) and `ports/` (Protocols that
+  describe what a use case needs).
+- **infrastructure/** — adapters that *implement* the ports against real tech.
+- **interfaces/** — the delivery edge: FastAPI routers / the worker CLI, plus
+  `dependencies.py` that wires ports to adapters.
+
+Read one service this way and you've effectively read them all.
+
+### 16.3 Read one vertical slice first — "send a message, get a streamed reply"
+
+Open these in order; together they are the entire user-facing path, top to
+bottom, and they demonstrate the layering:
+
+1. `chat-service/.../interfaces/http/routers/messages.py` — `POST /chat/{id}/messages` (append the user turn).
+2. `chat-service/.../interfaces/http/routers/stream.py` — `GET /chat/{id}/stream` (the SSE entry).
+3. `chat-service/.../interfaces/http/dependencies.py` — how every port gets its concrete adapter (the wiring hub).
+4. `chat-service/.../application/use_cases/stream_assistant_response.py` — the orchestration: an async generator yielding `StreamStarted/Chunk/Finished`, polling cancellation, persisting the message.
+5. `chat-service/.../application/ports/llm_client.py` — the **port** the use case depends on (not a concrete class).
+6. `chat-service/.../infrastructure/sdk/sdk_llm_client.py` — the **adapter**: maps domain types to the SDK and picks the provider's API key.
+7. `logging-sdk/olive_sdk/client.py` — `LLMClient.complete`.
+8. `logging-sdk/olive_sdk/infrastructure/providers/anthropic_adapter.py` — a provider call normalised into `chunk` + `usage` events.
+9. `logging-sdk/olive_sdk/application/tracker.py` — builds and emits the `LogEvent` when the call finishes.
+10. `chat-service/.../domain/{entities/session.py, services/context_builder.py}` — the aggregate + the context window/attachment injection.
+
+### 16.4 Then the telemetry slice — "where the LogEvent goes"
+
+1. `olive_sdk` Tracker → `infrastructure/emitters/http_emitter.py` → `POST /v1/logs`.
+2. `ingestion-service/.../routers/logs.py` → `infrastructure/streams/redis_stream.py` (`XADD`).
+3. `worker-service/.../interfaces/cli/run_worker.py` (wiring) → `application/worker_loop.py` (the drain loop).
+4. `worker-service/.../use_cases/process_log_event.py` (idempotency → redact → price) → `infrastructure/persistence/postgres_log_repo.py` + `infrastructure/clickhouse/clickhouse_metrics_sink.py`.
+5. `dashboard-service/.../use_cases/metric_queries.py` → `infrastructure/clickhouse/clickhouse_metrics_reader.py`.
+
+That's the whole observability half. With §16.3 + §16.4 you've seen every moving
+part of the platform.
+
+### 16.5 "Open these first" per service
+
+| Service | The files that define it |
+|---|---|
+| chat-service | `domain/entities/session.py`, `application/use_cases/stream_assistant_response.py`, `interfaces/http/dependencies.py`, `interfaces/http/routers/` |
+| logging-sdk | `client.py`, `application/tracker.py`, `infrastructure/providers/base_adapter.py` |
+| ingestion-service | `interfaces/http/routers/logs.py`, `infrastructure/streams/redis_stream.py` |
+| worker-service | `application/worker_loop.py`, `application/use_cases/process_log_event.py`, `interfaces/cli/run_worker.py` |
+| media-service | `application/use_cases/parse_document.py`, `infrastructure/transcription/faster_whisper_transcriber.py` |
+| dashboard-service | `application/use_cases/metric_queries.py`, `infrastructure/clickhouse/clickhouse_metrics_reader.py` |
+| ui | `src/App.tsx`, `src/features/chat/ChatView.tsx`, `src/api/client.ts`, `src/api/sse.ts` |
+| shared | `contracts/log_event.py` (the wire contract), `observability/olive_obs/` |
+
+### 16.6 How to trace any request in four hops
+
+`router (interfaces)` → `Depends(...)` provider in `dependencies.py` →
+`use case (application)` → `port` → `adapter (infrastructure)`. Domain objects
+are what flow through. If you can find these four files for a request, you
+understand it.
+
+### 16.7 Conventions you'll see everywhere
+
+- **Packages:** `olive-` prefix for shared libraries (`olive-contracts`,
+  `olive-sdk`, `olive-obs`, `olive-testing`); runnable services are `<name>-service`.
+- **Use cases:** a `<Verb><Noun>Handler` class with a frozen `Command`/`Result`
+  dataclass and an `async def handle(...)`.
+- **Ports vs adapters:** ports are `Protocol`s in `application/ports/`; adapters
+  live in `infrastructure/` and are named after the technology (`PostgresX`,
+  `RedisX`, `S3X`, `Bcrypt…`).
+- **Config:** one `pydantic-settings` `BaseSettings` per service, env-driven;
+  the running services read the repo-root `.env`.
+- **Tests:** unit tests (in-memory fakes) beside the code; integration tests
+  using **testcontainers** in `tests/infrastructure/`; cross-service e2e in
+  `/tests/e2e/`; UI in `ui/src/**.test.tsx` + Playwright in `ui/tests-e2e/`.
+- **Async everywhere**, and middleware is **pure-ASGI** (never
+  `BaseHTTPMiddleware`) so SSE streaming isn't buffered.
+
+### 16.8 Gotchas worth knowing up front
+
+- **SSE:** the request-id / Prometheus middlewares had to be pure-ASGI — a
+  buffering middleware silently breaks token streaming.
+- **Worker = exactly-once-effective:** safe under at-least-once delivery via
+  idempotency; unparseable messages go to the dead-letter stream; transient
+  failures are left un-acked to redeliver.
+- **ClickHouse** wants **naive-UTC** datetimes (a `+00:00` offset fails to parse).
+- **chat & worker share one Postgres** but own different schemas and keep
+  **separate Alembic version tables** so their histories don't collide.
+- **`olive_obs`** lazy-imports its FastAPI helpers so the worker (which has no
+  FastAPI) can still `import olive_obs` for logging.
+- **Two URL layers:** browser→nginx (`/api/*`, single origin) is distinct from
+  service→service (`postgres`, `ingestion-service:8001`, …); the `.env`
+  host/URL values are dev-mode and are overridden in `docker-compose.prod.yml`.
+
+### 16.9 Run it, then change something
+
+```bash
+make install                                   # uv sync the workspace
+make up && make up-analytics                   # infra
+make migrate-all && make migrate-clickhouse    # schema
+scripts/dev-local.sh up                        # run the services + UI
+make check          # ruff + mypy (must pass before committing)
+make test           # pytest across the workspace
+```
+
+A good first change to prove you understand the flow: add a field to a metric
+endpoint — touch the ClickHouse reader query, the use-case result dataclass, the
+HTTP schema, and the React dashboard, then watch it appear end-to-end.
+
