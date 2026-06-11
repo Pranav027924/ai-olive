@@ -87,7 +87,8 @@ services:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      # GET (not --spider/HEAD): ClickHouse /ping answers GET with "Ok.".
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://127.0.0.1:8123/ping 2>&1 | grep -q Ok"]
       interval: 5s
       timeout: 5s
       retries: 10
