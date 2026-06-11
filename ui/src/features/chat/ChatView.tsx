@@ -88,9 +88,6 @@ export function ChatView(): JSX.Element {
       {/* Slim header */}
       <header className="flex items-center gap-2 px-4 py-3">
         <span className="truncate text-sm font-medium">{session.data.title || "New chat"}</span>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-          {session.data.provider}
-        </span>
       </header>
 
       {/* Transcript */}
@@ -134,6 +131,14 @@ export function ChatView(): JSX.Element {
               busy: upload.isPending,
               note: upload.data ? `${upload.data.filename} — ${upload.data.parse_status}` : null,
             }}
+            controls={
+              <span
+                title={`${session.data.provider} · ${session.data.model}`}
+                className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground"
+              >
+                {session.data.model}
+              </span>
+            }
           />
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
             AI-OLive can make mistakes. Responses are logged for analytics.

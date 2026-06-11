@@ -1,5 +1,5 @@
-import { ArrowUp, Loader2, Paperclip, Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Loader2, Plus, Square } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FileDropzone } from "@/features/uploads/FileDropzone";
@@ -16,6 +16,8 @@ export interface ComposerProps {
   onCancel?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** Rendered on the bottom controls row, left of the send button (e.g. the model picker). */
+  controls?: ReactNode;
   attach?: {
     onFile: (f: File) => void;
     onVoice: (f: File) => void;
@@ -25,9 +27,10 @@ export interface ComposerProps {
 }
 
 /**
- * ChatGPT-style rounded composer: a pill with an optional "+" attach
- * toggle on the left, an auto-growing textarea, and a circular
- * send/stop button on the right. Enter sends, Shift+Enter newlines.
+ * Chat composer with the two-row layout used by ChatGPT/Claude: the
+ * textarea sits on top, and a controls row underneath holds the "+"
+ * attach toggle (left) and the model picker + send/stop button (right).
+ * Enter sends, Shift+Enter newlines.
  */
 export function Composer({
   value,
@@ -39,6 +42,7 @@ export function Composer({
   onCancel,
   placeholder = "Ask anything",
   autoFocus,
+  controls,
   attach,
 }: ComposerProps): JSX.Element {
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -55,9 +59,18 @@ export function Composer({
   const canSend = !disabled && !busy && value.trim().length > 0;
 
   return (
-    <div className="w-full">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (canSend) onSubmit();
+      }}
+      className={cn(
+        "flex flex-col gap-1.5 rounded-[28px] border border-border bg-background px-3 py-2.5",
+        "shadow-sm transition-shadow focus-within:shadow-md",
+      )}
+    >
       {attach && showAttach && (
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 px-1">
           <FileDropzone onFile={attach.onFile} />
           <VoiceRecorder onClip={attach.onVoice} />
           {attach.busy && (
@@ -69,73 +82,73 @@ export function Composer({
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (canSend) onSubmit();
+      <textarea
+        ref={textarea}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (canSend) onSubmit();
+          }
         }}
+        rows={1}
+        placeholder={placeholder}
+        aria-label="message-input"
+        autoFocus={autoFocus}
         className={cn(
-          "flex items-end gap-2 rounded-[28px] border border-border bg-background px-3 py-2",
-          "shadow-sm focus-within:shadow-md transition-shadow",
+          "max-h-[200px] w-full resize-none bg-transparent px-2 py-1 text-[15px] leading-6",
+          "placeholder:text-muted-foreground scrollbar-thin focus:outline-none",
         )}
-      >
-        {attach && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 rounded-full text-muted-foreground"
-            onClick={() => setShowAttach((s) => !s)}
-            aria-label="attach"
-            aria-pressed={showAttach}
-          >
-            <Paperclip className="h-5 w-5" />
-          </Button>
-        )}
+      />
 
-        <textarea
-          ref={textarea}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (canSend) onSubmit();
-            }
-          }}
-          rows={1}
-          placeholder={placeholder}
-          aria-label="message-input"
-          autoFocus={autoFocus}
-          className={cn(
-            "flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-6",
-            "placeholder:text-muted-foreground focus:outline-none",
-            "max-h-[200px] scrollbar-thin",
+      {/* Controls row */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          {attach && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full text-muted-foreground"
+              onClick={() => setShowAttach((s) => !s)}
+              aria-label="attach"
+              aria-pressed={showAttach}
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
           )}
-        />
+        </div>
 
-        {streaming ? (
-          <Button
-            type="button"
-            size="icon"
-            onClick={onCancel}
-            aria-label="cancel"
-            className="h-9 w-9 shrink-0 rounded-full"
-          >
-            <Square className="h-4 w-4 fill-current" />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!canSend}
-            aria-label="send"
-            className="h-9 w-9 shrink-0 rounded-full disabled:opacity-30"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-5 w-5" />}
-          </Button>
-        )}
-      </form>
-    </div>
+        <div className="flex items-center gap-2">
+          {controls}
+          {streaming ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={onCancel}
+              aria-label="cancel"
+              className="h-9 w-9 shrink-0 rounded-full"
+            >
+              <Square className="h-4 w-4 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!canSend}
+              aria-label="send"
+              className="h-9 w-9 shrink-0 rounded-full disabled:opacity-30"
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowUp className="h-5 w-5" />
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </form>
   );
 }

@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { createSession, sendUserMessage } from "@/api/client";
+import type { Provider } from "@/api/types";
 import { Logo } from "@/components/Logo";
+import { Dropdown } from "@/components/ui/dropdown";
 import { Composer } from "@/features/chat/Composer";
-import { defaultModelFor } from "@/lib/providers";
+import { PROVIDERS, defaultModelFor } from "@/lib/providers";
 import { usePrefsStore } from "@/stores/prefs";
 
 const SUGGESTIONS = [
@@ -21,6 +23,7 @@ export function HomeChat(): JSX.Element {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const provider = usePrefsStore((s) => s.provider);
+  const setProvider = usePrefsStore((s) => s.setProvider);
   const [input, setInput] = useState("");
 
   const start = useMutation({
@@ -60,6 +63,20 @@ export function HomeChat(): JSX.Element {
           placeholder="Ask anything..."
           autoFocus
           attach={{ onFile: () => {}, onVoice: () => {} }}
+          controls={
+            <Dropdown<Provider>
+              aria-label="provider"
+              value={provider}
+              onChange={setProvider}
+              placement="top"
+              align="right"
+              options={PROVIDERS.map((p) => ({
+                value: p.value,
+                label: p.label,
+                hint: p.defaultModel,
+              }))}
+            />
+          }
         />
 
         <div className="mt-4 flex flex-wrap justify-center gap-2">

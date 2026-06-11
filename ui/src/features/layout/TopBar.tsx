@@ -3,17 +3,12 @@ import { LogOut, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { Provider } from "@/api/types";
-import { Dropdown } from "@/components/ui/dropdown";
-import { PROVIDERS } from "@/lib/providers";
 import { useAuthStore } from "@/stores/auth";
 import { usePrefsStore } from "@/stores/prefs";
 
 export function TopBar(): JSX.Element {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const provider = usePrefsStore((s) => s.provider);
-  const setProvider = usePrefsStore((s) => s.setProvider);
   const theme = usePrefsStore((s) => s.theme);
   const toggleTheme = usePrefsStore((s) => s.toggleTheme);
   const user = useAuthStore((s) => s.user);
@@ -24,13 +19,6 @@ export function TopBar(): JSX.Element {
 
   return (
     <div className="flex items-center justify-end gap-2 px-4 py-2.5">
-      <Dropdown<Provider>
-        aria-label="provider"
-        value={provider}
-        onChange={setProvider}
-        options={PROVIDERS.map((p) => ({ value: p.value, label: p.label, hint: p.defaultModel }))}
-      />
-
       <button
         onClick={toggleTheme}
         aria-label="toggle theme"

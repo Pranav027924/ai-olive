@@ -15,6 +15,8 @@ interface DropdownProps<T extends string> {
   onChange: (value: T) => void;
   "aria-label"?: string;
   align?: "left" | "right";
+  /** Which way the menu opens. "top" suits a composer sitting at the bottom. */
+  placement?: "top" | "bottom";
   className?: string;
 }
 
@@ -24,6 +26,7 @@ export function Dropdown<T extends string>({
   options,
   onChange,
   align = "left",
+  placement = "bottom",
   className,
   ...rest
 }: DropdownProps<T>): JSX.Element {
@@ -61,7 +64,8 @@ export function Dropdown<T extends string>({
           <ul
             role="listbox"
             className={cn(
-              "absolute top-10 z-20 min-w-[180px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg",
+              "absolute z-20 min-w-[200px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg",
+              placement === "top" ? "bottom-full mb-2" : "top-full mt-2",
               align === "right" ? "right-0" : "left-0",
             )}
           >
