@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-service
+  namespace: ai-olive
+spec:
+  selector: { app: chat-service }
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-service
+  namespace: ai-olive
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: chat-service }
+  template:
+    metadata:
+      labels: { app: chat-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: chat-service
+          image: ai-olive/chat-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: olive-config }
+            - secretRef: { name: olive-secrets }
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }

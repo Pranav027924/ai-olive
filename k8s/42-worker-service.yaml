@@ -1,0 +1,41 @@
+# Worker has no HTTP server, so no Service. Liveness/readiness use an
+# exec probe that checks Redis reachability from inside the container.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-service
+  namespace: ai-olive
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: worker-service }
+  template:
+    metadata:
+      labels: { app: worker-service }
+    spec:
+      containers:
+        - name: worker-service
+          image: ai-olive/worker-service:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: olive-config }
+            - secretRef: { name: olive-secrets }
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,socket; socket.create_connection((os.environ['REDIS_HOST'], int(os.environ['REDIS_PORT'])), 2).close()"
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,socket; socket.create_connection((os.environ['REDIS_HOST'], int(os.environ['REDIS_PORT'])), 2).close()"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }

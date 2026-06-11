@@ -32,6 +32,8 @@ dist/
 .env
 .env.*
 !.env.example
+# Real k8s Secret (only the *.example.yaml template is tracked)
+k8s/11-secret.yaml
 
 # Editors / OS
 .vscode/

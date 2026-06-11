@@ -1,0 +1,85 @@
+# One-shot migration Jobs (PRD §9.10). Re-run after each image bump:
+#   kubectl -n ai-olive delete job chat-migrate worker-migrate clickhouse-migrate --ignore-not-found
+#   kubectl apply -f k8s/30-migrations.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chat-migrate
+  namespace: ai-olive
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: chat-migrate
+          image: ai-olive/chat-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cd /app/chat-service && alembic upgrade head"]
+          envFrom:
+            - configMapRef: { name: olive-config }
+            - secretRef: { name: olive-secrets }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker-migrate
+  namespace: ai-olive
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: worker-migrate
+          image: ai-olive/worker-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cd /app/worker-service && alembic upgrade head"]
+          envFrom:
+            - configMapRef: { name: olive-config }
+            - secretRef: { name: olive-secrets }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-migrate
+  namespace: ai-olive
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: clickhouse-migrate
+          image: curlimages/curl:8.11.0
+          env:
+            - name: CH_PASSWORD
+              valueFrom: { secretKeyRef: { name: olive-secrets, key: CLICKHOUSE_PASSWORD } }
+          command:
+            - sh
+            - -c
+            - |
+              curl --fail --silent --show-error \
+                --user "olive:$CH_PASSWORD" \
+                --data-binary @- \
+                "http://clickhouse:8123/?database=olive" <<'SQL'
+              CREATE TABLE IF NOT EXISTS inference_metrics
+              (
+                  event_id          UUID,
+                  session_id        UUID,
+                  provider          LowCardinality(String),
+                  model             LowCardinality(String),
+                  status            LowCardinality(String),
+                  started_at        DateTime64(3, 'UTC'),
+                  finished_at       DateTime64(3, 'UTC'),
+                  latency_ms        UInt32,
+                  ttft_ms           Nullable(UInt32),
+                  prompt_tokens     UInt32,
+                  completion_tokens UInt32,
+                  cost_usd          Float64
+              )
+              ENGINE = MergeTree
+              PARTITION BY toYYYYMM(started_at)
+              ORDER BY (provider, model, started_at, event_id)
+              TTL toDateTime(started_at) + INTERVAL 180 DAY;
+              SQL

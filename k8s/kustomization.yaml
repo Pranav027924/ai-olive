@@ -1,0 +1,22 @@
+# kubectl apply -k k8s/
+#
+# Note: the Secret is intentionally NOT listed here — copy
+# 11-secret.example.yaml to 11-secret.yaml (gitignored), fill in real
+# values, and apply it separately before/with the rest.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-namespace.yaml
+  - 10-config.yaml
+  - 20-postgres.yaml
+  - 21-redis.yaml
+  - 22-minio.yaml
+  - 23-clickhouse.yaml
+  - 30-migrations.yaml
+  - 40-chat-service.yaml
+  - 41-ingestion-service.yaml
+  - 42-worker-service.yaml
+  - 43-dashboard-service.yaml
+  - 44-ui.yaml
+  - 50-ingress.yaml

@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+  namespace: ai-olive
+spec:
+  selector: { app: dashboard-service }
+  ports:
+    - port: 8004
+      targetPort: 8004
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-service
+  namespace: ai-olive
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: dashboard-service }
+  template:
+    metadata:
+      labels: { app: dashboard-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8004"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: dashboard-service
+          image: ai-olive/dashboard-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8004
+          envFrom:
+            - configMapRef: { name: olive-config }
+            - secretRef: { name: olive-secrets }
+          livenessProbe:
+            httpGet: { path: /health, port: 8004 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8004 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
