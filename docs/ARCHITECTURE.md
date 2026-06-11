@@ -396,12 +396,14 @@ AI-OLive/
   (wraps `olive-sdk`, routing per-session provider to the right API key),
   `JwtVerifier`, and — through `media-service` — the parsers, whisper
   transcriber and S3 object storage.
-- **Endpoints:** `POST/GET /sessions`, `GET /sessions/{id}`,
+- **Endpoints:** `POST /auth/register`, `POST /auth/login`,
+  `POST/GET /sessions`, `GET/DELETE /sessions/{id}`,
   `POST /chat/{id}/messages`, `GET /chat/{id}/stream` (SSE),
   `POST /chat/{id}/cancel`, `POST /sessions/{id}/files`,
   `POST /sessions/{id}/voice`, plus `/health`, `/health/ready`, `/metrics`.
-- **Auth:** HS256 JWT (`get_current_user_id`). `DISABLE_AUTH=true` (dev/UI/tests)
-  falls back to a fixed dev user; production requires a Bearer token.
+- **Auth:** bcrypt accounts + HS256 JWT — login mints a token (`JwtIssuer`),
+  `get_current_user_id` verifies it (`JwtVerifier`). `DISABLE_AUTH=true`
+  (local/demo) falls back to a fixed dev user; production requires a Bearer token.
 - **Owns:** the `chat` Postgres schema.
 
 ### 7.2 Logging SDK (`logging-sdk` / `olive-sdk`, library)
@@ -488,16 +490,28 @@ as FastAPI BackgroundTasks.
 
 ### 7.7 UI (`ui`, React SPA)
 
-- **Routes:** session list (create + provider picker), chat view (SSE streaming,
-  cancel, file dropzone, voice recorder), dashboard (Recharts bar charts +
-  headline stats, window picker).
-- **Data layer:** TanStack Query for server state, a hand-written typed client
-  (`src/api/client.ts`), and a custom **SSE reader** (`src/api/sse.ts`) built on
-  `fetch` + `ReadableStream` (not `EventSource`, because the chat-service uses
-  named events `started`/`chunk`/`finished`).
+A ChatGPT-style two-pane app: a persistent **Sidebar** (olive ring logo, a
+prominent New-chat button, Dashboard, chat search, the recents list with a
+per-chat `···` Delete menu) and a **main column** with a **TopBar** (provider
+picker, light/dark theme toggle, account menu → log out) above the active view.
+
+- **Routes:** `/login` (outside the shell), then a `Shell` layout route wrapping
+  the home empty-state (serif greeting + composer + suggestion chips), the chat
+  view (SSE streaming, cancel, `+` attach for file/voice), and the dashboard
+  (Recharts + headline stats, window picker).
+- **Auth:** a persisted Zustand **auth store** holds the JWT; `src/api/client.ts`
+  attaches `Authorization: Bearer …` to every request and the SSE fetch, and a
+  global **401 → /login** redirect handles both modes — no login needed when the
+  backend runs `DISABLE_AUTH=true`, login required when it's `false`. A **prefs
+  store** persists the chosen provider + theme.
+- **Data layer:** TanStack Query for server state, a hand-written typed client,
+  and a custom **SSE reader** (`src/api/sse.ts`) on `fetch` + `ReadableStream`
+  (not `EventSource`, because the chat-service uses named events
+  `started`/`chunk`/`finished`).
 - **Dev:** Vite proxies `/api/chat/*` → :8000 and `/api/dashboard/*` → :8004.
-  **Prod:** nginx serves the static bundle; the cluster Ingress does the prefix
-  routing.
+  **Prod:** the UI's nginx serves the static bundle **and reverse-proxies**
+  `/api/chat` + `/api/dashboard` to the backends, so the whole app is one origin
+  (`:8080`).
 
 ---
 
@@ -549,9 +563,10 @@ read-model split).
 
 ### 9.1 Postgres — `chat` schema (owned by Chat Service)
 
-- `users`, `sessions`, `messages` (FK to sessions, `CASCADE`), `attachments`
-  (FK to sessions; `kind`, `parse_status`, `s3_key`, `parsed_text`,
-  `transcript`). Managed by chat-service's Alembic migrations.
+- `users` (email + bcrypt `password_hash` for login), `sessions`, `messages`
+  (FK to sessions, `CASCADE`), `attachments` (FK to sessions; `kind`,
+  `parse_status`, `s3_key`, `parsed_text`, `transcript`). Managed by
+  chat-service's Alembic migrations.
 
 ### 9.2 Postgres — `logs` schema (owned by Worker Service)
 
@@ -596,7 +611,10 @@ every runnable service with a single `install_observability(app, …)` call.
   ingestion→Redis, dashboard→ClickHouse; returns 503 with a per-dependency
   breakdown on failure). These map directly to Kubernetes liveness/readiness
   probes.
-- **Security.** Users: HS256 JWT on chat endpoints (`DISABLE_AUTH` dev bypass).
+- **Security.** Users: email/password accounts — `POST /auth/register` +
+  `POST /auth/login` hash with **bcrypt** and mint an **HS256 JWT** (`JwtIssuer`);
+  every protected route verifies the Bearer token via `get_current_user_id`
+  (`JwtVerifier`). `DISABLE_AUTH=true` keeps a dev-user bypass for local/demo.
   Inter-service: an API-key **allow-list** in ingestion enabling zero-downtime
   rotation, constant-time compared.
 - **Resilience.** Idempotent worker processing; dead-letter stream for poison
