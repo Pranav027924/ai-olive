@@ -41,7 +41,7 @@ export function Dashboard(): JSX.Element {
   const costData = cost.data?.breakdown ?? [];
 
   return (
-    <div className="container py-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto px-6 py-6 scrollbar-thin">
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Dashboard</h1>
         <select

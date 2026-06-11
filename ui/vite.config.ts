@@ -22,5 +22,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Playwright specs live in tests-e2e/ and run under Playwright, not vitest.
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["node_modules", "dist", "tests-e2e/**"],
   },
 });

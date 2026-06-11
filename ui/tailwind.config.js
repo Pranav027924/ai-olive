@@ -29,6 +29,7 @@ export default {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        sidebar: "hsl(var(--sidebar))",
       },
       borderRadius: { lg: "0.75rem", md: "0.5rem", sm: "0.25rem" },
     },

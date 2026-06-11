@@ -1,26 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import {
-  cancelStream,
-  getSession,
-  sendUserMessage,
-  uploadFile,
-  uploadVoice,
-} from "@/api/client";
+import { cancelStream, getSession, sendUserMessage, uploadFile, uploadVoice } from "@/api/client";
 import type { MessageView } from "@/api/types";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { FileDropzone } from "@/features/uploads/FileDropzone";
-import { VoiceRecorder } from "@/features/uploads/VoiceRecorder";
-import { useChatStream } from "./useChatStream";
+import { Composer } from "@/features/chat/Composer";
+import { useChatStream } from "@/features/chat/useChatStream";
+import { cn } from "@/lib/cn";
 
 export function ChatView(): JSX.Element {
   const { sessionId = "" } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
   const session = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
@@ -28,13 +21,30 @@ export function ChatView(): JSX.Element {
   });
   const stream = useChatStream();
   const [input, setInput] = useState("");
-  const transcript = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    transcript.current?.scrollTo({ top: transcript.current.scrollHeight });
-  }, [stream.text, session.data?.messages.length]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const autoStarted = useRef<string | null>(null);
 
   const refreshSession = () => qc.invalidateQueries({ queryKey: ["session", sessionId] });
+
+  // Keep pinned to the latest content.
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+  }, [stream.text, session.data?.messages.length]);
+
+  // Arriving from the home composer: the first user message is already
+  // posted, so kick the stream once.
+  useEffect(() => {
+    const wants = (location.state as { autostream?: boolean } | null)?.autostream;
+    if (wants && sessionId && autoStarted.current !== sessionId) {
+      autoStarted.current = sessionId;
+      navigate(location.pathname, { replace: true, state: {} });
+      void (async () => {
+        await stream.start(sessionId);
+        await refreshSession();
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, sessionId]);
 
   const send = useMutation({
     mutationFn: async () => {
@@ -59,103 +69,93 @@ export function ChatView(): JSX.Element {
     onSuccess: () => stream.abort(),
   });
 
-  if (!sessionId) return <p className="container py-6">Missing session id.</p>;
-  if (session.isPending) return <p className="container py-6">Loading session…</p>;
-  if (session.isError || !session.data)
-    return <p className="container py-6 text-destructive">Failed to load session.</p>;
+  if (session.isPending) {
+    return <div className="grid h-full place-items-center text-muted-foreground">Loading…</div>;
+  }
+  if (session.isError || !session.data) {
+    return (
+      <div className="grid h-full place-items-center text-destructive">Failed to load chat.</div>
+    );
+  }
+
+  const messages = session.data.messages;
+  const lastIsAssistant = messages.at(-1)?.role === "assistant";
+  const showLiveAssistant =
+    stream.status === "streaming" || (stream.status === "completed" && !lastIsAssistant);
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto]">
-      <header className="border-b border-border bg-card px-4 py-2 flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="back">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="font-semibold">{session.data.title || "Untitled"}</h1>
-        <span className="text-xs text-muted-foreground">
-          {session.data.provider} / {session.data.model}
+      {/* Slim header */}
+      <header className="flex items-center gap-2 px-4 py-3">
+        <span className="truncate text-sm font-medium">{session.data.title || "New chat"}</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+          {session.data.provider}
         </span>
       </header>
 
-      <div ref={transcript} className="overflow-y-auto px-4 py-4 space-y-3" data-testid="transcript">
-        {session.data.messages.map((m) => (
-          <Bubble key={m.id} message={m} />
-        ))}
-        {stream.status === "streaming" || stream.status === "completed" ? (
-          <Card>
-            <CardContent>
-              <p className="text-xs uppercase text-muted-foreground">assistant</p>
-              <p data-testid="stream-text" className="whitespace-pre-wrap text-sm">
+      {/* Transcript */}
+      <div ref={scroller} className="overflow-y-auto scrollbar-thin" data-testid="transcript">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+          {messages.map((m) => (
+            <Bubble key={m.id} message={m} />
+          ))}
+
+          {showLiveAssistant && (
+            <div className="text-[15px] leading-7">
+              <p data-testid="stream-text" className="whitespace-pre-wrap">
                 {stream.text}
-                {stream.status === "streaming" && <span className="animate-pulse">▍</span>}
+                {stream.status === "streaming" && (
+                  <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-foreground/70 align-middle" />
+                )}
               </p>
-            </CardContent>
-          </Card>
-        ) : null}
-        {stream.status === "errored" && (
-          <p className="text-sm text-destructive">{stream.error || "Stream failed"}</p>
-        )}
+            </div>
+          )}
+
+          {stream.status === "errored" && (
+            <p className="text-sm text-destructive">{stream.error || "Stream failed."}</p>
+          )}
+        </div>
       </div>
 
-      <form
-        className="border-t border-border bg-card px-4 py-3 flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!send.isPending) send.mutate();
-        }}
-      >
-        <div className="flex gap-2">
-          <textarea
+      {/* Composer */}
+      <div className="px-4 pb-4">
+        <div className="mx-auto max-w-3xl">
+          <Composer
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Say something…"
-            className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm"
-            rows={2}
-            aria-label="message-input"
+            onChange={setInput}
+            onSubmit={() => send.mutate()}
+            busy={send.isPending}
+            streaming={stream.status === "streaming"}
+            onCancel={() => cancel.mutate()}
+            placeholder="Reply…"
+            attach={{
+              onFile: (file) => upload.mutate({ file, kind: "file" }),
+              onVoice: (file) => upload.mutate({ file, kind: "voice" }),
+              busy: upload.isPending,
+              note: upload.data ? `${upload.data.filename} — ${upload.data.parse_status}` : null,
+            }}
           />
-          <div className="flex flex-col gap-2">
-            <Button type="submit" disabled={send.isPending || !input.trim()} aria-label="send">
-              {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Send
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => cancel.mutate()}
-              disabled={stream.status !== "streaming"}
-              aria-label="cancel"
-            >
-              <X className="h-4 w-4" /> Cancel
-            </Button>
-          </div>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            AI-OLive can make mistakes. Responses are logged for analytics.
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FileDropzone onFile={(file) => upload.mutate({ file, kind: "file" })} />
-          <VoiceRecorder onClip={(file) => upload.mutate({ file, kind: "voice" })} />
-          {upload.isPending && (
-            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" /> uploading
-            </span>
-          )}
-          {upload.data && (
-            <span className="text-xs text-muted-foreground">
-              {upload.data.filename} — {upload.data.parse_status}
-            </span>
-          )}
-        </div>
-      </form>
+      </div>
     </div>
   );
 }
 
 function Bubble({ message }: { message: MessageView }): JSX.Element {
   const isUser = message.role === "user";
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-7">
+          {message.content}
+        </div>
+      </div>
+    );
+  }
   return (
-    <Card className={isUser ? "bg-accent" : undefined}>
-      <CardContent>
-        <p className="text-xs uppercase text-muted-foreground">{message.role}</p>
-        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-      </CardContent>
-    </Card>
+    <div className={cn("text-[15px] leading-7", "whitespace-pre-wrap")}>{message.content}</div>
   );
 }
