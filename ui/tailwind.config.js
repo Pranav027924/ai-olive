@@ -1,3 +1,5 @@
+import typography from "@tailwindcss/typography";
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
@@ -34,5 +36,5 @@ export default {
       borderRadius: { lg: "0.75rem", md: "0.5rem", sm: "0.25rem" },
     },
   },
-  plugins: [],
+  plugins: [typography],
 };

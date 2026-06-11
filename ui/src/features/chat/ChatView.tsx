@@ -4,9 +4,9 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { cancelStream, getSession, sendUserMessage, uploadFile, uploadVoice } from "@/api/client";
 import type { MessageView } from "@/api/types";
+import { Markdown } from "@/components/Markdown";
 import { Composer } from "@/features/chat/Composer";
 import { useChatStream } from "@/features/chat/useChatStream";
-import { cn } from "@/lib/cn";
 
 export function ChatView(): JSX.Element {
   const { sessionId = "" } = useParams();
@@ -98,13 +98,11 @@ export function ChatView(): JSX.Element {
           ))}
 
           {showLiveAssistant && (
-            <div className="text-[15px] leading-7">
-              <p data-testid="stream-text" className="whitespace-pre-wrap">
-                {stream.text}
-                {stream.status === "streaming" && (
-                  <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-foreground/70 align-middle" />
-                )}
-              </p>
+            <div data-testid="stream-text" className="text-[15px] leading-7">
+              <Markdown content={stream.text} />
+              {stream.status === "streaming" && (
+                <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-foreground/70 align-middle" />
+              )}
             </div>
           )}
 
@@ -161,6 +159,8 @@ function Bubble({ message }: { message: MessageView }): JSX.Element {
     );
   }
   return (
-    <div className={cn("text-[15px] leading-7", "whitespace-pre-wrap")}>{message.content}</div>
+    <div className="text-[15px] leading-7">
+      <Markdown content={message.content} />
+    </div>
   );
 }
