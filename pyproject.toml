@@ -71,6 +71,8 @@ ignore = [
 # async tests (ASYNC240) are fine in tests.
 "**/tests/**" = ["S101", "S105", "S106", "ASYNC240"]
 "**/test_*.py" = ["S101", "S105", "S106", "ASYNC240"]
+# Load-test data uses non-crypto randomness on purpose.
+"load/**" = ["S311"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -92,6 +94,9 @@ exclude = [
     "dist/",
     ".venv/",
     "ui/",
+    # Locust load scripts are run via `uvx locust`, not type-checked as
+    # part of the workspace; locust's base classes are untyped (Any).
+    "^load/",
     # Alembic env.py and migrations are loaded by the alembic CLI, not as
     # packages. Multiple services each carry their own alembic/env.py
     # which collide on the module name `alembic.env` for mypy.
@@ -119,6 +124,8 @@ module = [
     "reportlab.*",
     "aiochclient",
     "aiochclient.*",
+    "locust",
+    "locust.*",
 ]
 ignore_missing_imports = true
 
