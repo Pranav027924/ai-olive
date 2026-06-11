@@ -91,6 +91,46 @@ services:
       resources:
         limits: { cpus: "2.0", memory: 2g }
 
+  # ---------------------------------------------- one-shot init (run once)
+  createbuckets:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mc alias set m http://minio:9000 "${MINIO_ROOT_USER:-olive}" "${MINIO_ROOT_PASSWORD}" &&
+        mc mb -p m/${S3_BUCKET:-olive-attachments}
+    depends_on:
+      minio: { condition: service_healthy }
+
+  clickhouse-migrate:
+    image: curlimages/curl:8.11.0
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        curl --fail --silent --show-error \
+          --user "${CLICKHOUSE_USER:-olive}:${CLICKHOUSE_PASSWORD}" \
+          --data-binary @- "http://clickhouse:8123/?database=${CLICKHOUSE_DB:-olive}" <<'SQL'
+        CREATE TABLE IF NOT EXISTS inference_metrics
+        (
+            event_id UUID, session_id UUID,
+            provider LowCardinality(String), model LowCardinality(String),
+            status LowCardinality(String),
+            started_at DateTime64(3,'UTC'), finished_at DateTime64(3,'UTC'),
+            latency_ms UInt32, ttft_ms Nullable(UInt32),
+            prompt_tokens UInt32, completion_tokens UInt32, cost_usd Float64
+        )
+        ENGINE = MergeTree
+        PARTITION BY toYYYYMM(started_at)
+        ORDER BY (provider, model, started_at, event_id)
+        TTL toDateTime(started_at) + INTERVAL 180 DAY;
+        SQL
+    depends_on:
+      clickhouse: { condition: service_healthy }
+
   # ----------------------------------------------------------- migrations
   chat-migrate:
     build: { context: ., dockerfile: docker/chat-service.Dockerfile }
@@ -132,6 +172,7 @@ services:
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
       chat-migrate: { condition: service_completed_successfully }
+      createbuckets: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 1g }
@@ -165,6 +206,7 @@ services:
       redis: { condition: service_healthy }
       clickhouse: { condition: service_healthy }
       worker-migrate: { condition: service_completed_successfully }
+      clickhouse-migrate: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 1g }
@@ -180,6 +222,7 @@ services:
       - "8004:8004"
     depends_on:
       clickhouse: { condition: service_healthy }
+      clickhouse-migrate: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { cpus: "0.5", memory: 512m }
