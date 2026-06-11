@@ -50,7 +50,8 @@ def test_allowed_api_keys_merges_singular_and_plural() -> None:
 
 
 def test_allowed_api_keys_strips_whitespace_and_blanks() -> None:
-    settings = IngestionSettings(ingestion_api_keys="  a  , , b ,")
+    # Pin the singular key too so a repo-root .env can't leak into it.
+    settings = IngestionSettings(ingestion_api_key="", ingestion_api_keys="  a  , , b ,")
     assert settings.allowed_api_keys == frozenset({"a", "b"})
 
 

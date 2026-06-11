@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from worker_service.application.ports.stream_consumer import (
     StreamConsumer,
@@ -58,13 +59,20 @@ class RedisStreamConsumer(StreamConsumer):
 
     async def read(self, *, max_messages: int, block_ms: int) -> list[StreamMessage]:
         await self.ensure_group()
-        response = await self._redis.xreadgroup(
-            groupname=self._group,
-            consumername=self._consumer_name,
-            streams={self._stream: ">"},
-            count=max_messages,
-            block=block_ms,
-        )
+        try:
+            response = await self._redis.xreadgroup(
+                groupname=self._group,
+                consumername=self._consumer_name,
+                streams={self._stream: ">"},
+                count=max_messages,
+                block=block_ms,
+            )
+        except RedisTimeoutError:
+            # A blocking XREADGROUP that returns nothing within the block
+            # window surfaces as a socket read timeout on some redis-py
+            # versions. That's a normal idle poll, not a fault — treat it
+            # as an empty batch so the drain loop keeps running.
+            return []
         return _flatten(response)
 
     async def ack(self, message_ids: list[str]) -> None:

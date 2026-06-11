@@ -24,15 +24,15 @@ class _FakeClient:
     ) -> None:
         self.row = row
         self.rows = rows or []
-        self.fetch_calls: list[tuple[str, dict[str, Any]]] = []
-        self.fetchrow_calls: list[tuple[str, dict[str, Any]]] = []
+        self.fetch_calls: list[str] = []
+        self.fetchrow_calls: list[str] = []
 
-    async def fetchrow(self, query: str, *, params: dict[str, Any]) -> dict[str, Any] | None:
-        self.fetchrow_calls.append((query, params))
+    async def fetchrow(self, query: str) -> dict[str, Any] | None:
+        self.fetchrow_calls.append(query)
         return self.row
 
-    async def fetch(self, query: str, *, params: dict[str, Any]) -> list[dict[str, Any]]:
-        self.fetch_calls.append((query, params))
+    async def fetch(self, query: str) -> list[dict[str, Any]]:
+        self.fetch_calls.append(query)
         return self.rows
 
 
@@ -49,11 +49,13 @@ async def test_latency_percentiles_query_shape() -> None:
     assert result.p50 == 100.0
     assert result.p95 == 250.0
     assert result.p99 == 500.0
-    query, params = client.fetchrow_calls[0]
+    query = client.fetchrow_calls[0]
     assert "quantile(0.5)" in query
     assert "quantile(0.95)" in query
     assert "quantile(0.99)" in query
-    assert params == {"since": SINCE, "until": UNTIL}
+    # Window bounds are inlined as quoted naive-UTC literals.
+    assert "started_at >= '2026-06-01 00:00:00" in query
+    assert "started_at < '2026-06-02 00:00:00" in query
 
 
 async def test_latency_percentiles_empty_table_returns_zeroes() -> None:
@@ -105,7 +107,7 @@ async def test_cost_by_provider_maps_rows_into_value_objects() -> None:
         ("openai", 12.34),
         ("anthropic", 1.23),
     ]
-    query, _ = client.fetch_calls[0]
+    query = client.fetch_calls[0]
     assert "GROUP BY provider" in query
     assert "ORDER BY total DESC" in query
 
@@ -116,5 +118,5 @@ async def test_custom_table_name_is_honoured_in_queries() -> None:
 
     await reader.throughput(since=SINCE, until=UNTIL)
 
-    query, _ = client.fetchrow_calls[0]
+    query = client.fetchrow_calls[0]
     assert "FROM weird_table" in query

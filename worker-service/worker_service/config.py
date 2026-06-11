@@ -41,6 +41,14 @@ class WorkerSettings(BaseSettings):
     dlq_stream_name: str = "inference_logs_dlq"
     dlq_maxlen: int = Field(default=100_000, ge=1)
 
+    # ---- ClickHouse analytics sink (PRD §7.5) ----
+    clickhouse_url: str = "http://127.0.0.1:8123"
+    clickhouse_user: str = "olive"
+    clickhouse_password: str = "olive_dev_pw_ch"  # noqa: S105 — local default
+    clickhouse_db: str = "olive"
+    clickhouse_buffer_size: int = Field(default=50, ge=1)
+    clickhouse_flush_interval_seconds: float = Field(default=3.0, gt=0.0)
+
     # ---- Worker loop ----
     batch_size: int = Field(default=10, ge=1, le=1000)
     poll_block_ms: int = Field(default=5000, ge=100, le=60000)

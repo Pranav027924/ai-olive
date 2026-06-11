@@ -48,7 +48,10 @@ def _metrics_reader() -> MetricsReader:
     return ClickHouseMetricsReader(client=client, table=settings.clickhouse_table)
 
 
-def get_metrics_reader(settings: SettingsDep) -> MetricsReader:
+async def get_metrics_reader(settings: SettingsDep) -> MetricsReader:
+    # Must be async: aiohttp.ClientSession() (built lazily inside
+    # _metrics_reader) calls asyncio.get_running_loop(), so this can't run
+    # in FastAPI's sync-dependency threadpool — it needs the event loop.
     return _metrics_reader()
 
 

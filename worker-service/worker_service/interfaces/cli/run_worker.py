@@ -18,17 +18,24 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import signal
 
+import aiohttp
+from aiochclient import ChClient
 from olive_obs import configure_logging
 from redis.asyncio import Redis
 
+from worker_service.application.ports.metrics_sink import MetricsSink
 from worker_service.application.use_cases.process_log_event import (
     ProcessLogEventHandler,
 )
 from worker_service.application.worker_loop import WorkerLoop
 from worker_service.config import WorkerSettings
 from worker_service.domain.services.cost_calculator import CostCalculator
+from worker_service.infrastructure.clickhouse.clickhouse_metrics_sink import (
+    ClickHouseMetricsSink,
+)
 from worker_service.infrastructure.persistence.engine import get_sessionmaker
 from worker_service.infrastructure.persistence.postgres_log_repo import (
     PostgresLogRepository,
@@ -42,7 +49,7 @@ from worker_service.infrastructure.streams.redis_stream_consumer import (
 )
 
 
-def build_loop(settings: WorkerSettings) -> WorkerLoop:
+def build_loop(settings: WorkerSettings, *, metrics_sink: MetricsSink | None = None) -> WorkerLoop:
     redis_client: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
     consumer = RedisStreamConsumer(
         redis=redis_client,
@@ -60,6 +67,7 @@ def build_loop(settings: WorkerSettings) -> WorkerLoop:
         repo=repo,
         pipeline=default_pipeline(),
         cost_calculator=CostCalculator(),
+        metrics_sink=metrics_sink,
     )
     return WorkerLoop(
         consumer=consumer,
@@ -70,16 +78,52 @@ def build_loop(settings: WorkerSettings) -> WorkerLoop:
     )
 
 
+async def _periodic_flush(
+    sink: ClickHouseMetricsSink, interval: float, stop: asyncio.Event
+) -> None:
+    """Flush the analytics buffer on a timer so low-traffic rows still
+    land in ClickHouse without waiting for the buffer to fill."""
+    while not stop.is_set():
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        await sink.flush()
+
+
 async def _amain() -> None:
     configure_logging(service="worker-service")
     settings = WorkerSettings()
-    loop = build_loop(settings)
+
+    session = aiohttp.ClientSession()
+    ch_client = ChClient(
+        session,
+        url=settings.clickhouse_url,
+        user=settings.clickhouse_user,
+        password=settings.clickhouse_password,
+        database=settings.clickhouse_db,
+    )
+    sink = ClickHouseMetricsSink(
+        client=ch_client,
+        buffer_size=settings.clickhouse_buffer_size,
+        flush_interval_seconds=settings.clickhouse_flush_interval_seconds,
+    )
+
+    loop = build_loop(settings, metrics_sink=sink)
 
     asyncio_loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         asyncio_loop.add_signal_handler(sig, loop.shutdown)
 
-    await loop.run_forever()
+    flusher = asyncio.create_task(
+        _periodic_flush(sink, settings.clickhouse_flush_interval_seconds, loop.shutdown_event)
+    )
+    try:
+        await loop.run_forever()
+    finally:
+        flusher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await flusher
+        await sink.close()
+        await session.close()
 
 
 def main() -> None:

@@ -62,8 +62,17 @@ async def ch_client(settings: DashboardServiceSettings) -> AsyncIterator[ChClien
 
 
 @pytest_asyncio.fixture
-async def dashboard_client(settings: DashboardServiceSettings) -> AsyncIterator[AsyncClient]:
+async def dashboard_client(ch_client: ChClient) -> AsyncIterator[AsyncClient]:
+    # Override the reader to use this test's aiohttp session instead of the
+    # process-global lru_cached one, whose session would otherwise outlive
+    # (and be bound to) a previous test's event loop.
+    from dashboard_service.infrastructure.clickhouse.clickhouse_metrics_reader import (
+        ClickHouseMetricsReader,
+    )
+    from dashboard_service.interfaces.http.dependencies import get_metrics_reader
+
     app = create_app()
+    app.dependency_overrides[get_metrics_reader] = lambda: ClickHouseMetricsReader(client=ch_client)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
 
@@ -72,7 +81,8 @@ async def _seed(ch_client: ChClient, *, n: int = 6, error_count: int = 2) -> str
     """Insert N inference_metrics rows tagged with a unique provider so
     we can scope assertions to just this test's data."""
     label = f"e2e-{uuid4().hex[:8]}"
-    now = datetime.now(tz=UTC)
+    # Naive UTC: ClickHouse DateTime64 can't parse a "+00:00" offset.
+    now = datetime.now(tz=UTC).replace(tzinfo=None)
     rows = []
     for i in range(n):
         rows.append(

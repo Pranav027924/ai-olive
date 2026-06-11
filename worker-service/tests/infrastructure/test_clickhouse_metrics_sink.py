@@ -146,8 +146,10 @@ async def test_row_carries_all_dashboard_columns() -> None:
     assert row[2] == processed.provider
     assert row[3] == processed.model
     assert row[4] == processed.status
-    assert row[5] == processed.started_at
-    assert row[6] == processed.finished_at
+    # Datetimes are normalised to naive UTC for ClickHouse.
+    assert row[5] == processed.started_at.replace(tzinfo=None)
+    assert row[6] == processed.finished_at.replace(tzinfo=None)
+    assert row[5].tzinfo is None
     assert row[7] == processed.latency_ms
     assert row[8] == processed.ttft_ms
     assert row[9] == processed.prompt_tokens

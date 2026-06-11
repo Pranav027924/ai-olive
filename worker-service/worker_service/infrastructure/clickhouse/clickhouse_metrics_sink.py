@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from worker_service.application.ports.metrics_sink import MetricsSink
@@ -94,11 +95,20 @@ def _to_row(p: ProcessedLog) -> tuple[Any, ...]:
         p.provider,
         p.model,
         p.status,
-        p.started_at,
-        p.finished_at,
+        _ch_datetime(p.started_at),
+        _ch_datetime(p.finished_at),
         p.latency_ms,
         p.ttft_ms,
         p.prompt_tokens or 0,
         p.completion_tokens or 0,
         float(p.cost_usd) if p.cost_usd is not None else 0.0,
     )
+
+
+def _ch_datetime(dt: datetime) -> datetime:
+    """ClickHouse's DateTime64 ValuesBlockInputFormat can't parse a
+    ``+00:00`` offset, which is how aiochclient serialises tz-aware
+    datetimes. Normalise to naive UTC so it serialises offset-free."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(UTC).replace(tzinfo=None)
+    return dt
