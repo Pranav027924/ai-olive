@@ -1,0 +1,8 @@
+# Caddy edge for the internet deploy. OLIVE_DOMAIN is injected from the
+# VPS .env; Caddy provisions + renews Let's Encrypt TLS for it automatically.
+# All traffic is reverse-proxied to the UI container, whose nginx serves the
+# static app and proxies /api/chat + /api/dashboard to the backends.
+{$OLIVE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy ui:8080
+}

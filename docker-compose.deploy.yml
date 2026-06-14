@@ -1,0 +1,223 @@
+# Internet deploy (PRD §9 / DEPLOY.md). Pulls prebuilt images from GHCR
+# (no local build) and fronts the app with Caddy for automatic HTTPS.
+#
+# Used by .github/workflows/deploy.yml on the EC2 VPS:
+#   docker compose -f docker-compose.deploy.yml pull
+#   docker compose -f docker-compose.deploy.yml up -d
+#
+# The VPS .env provides secrets + IMAGE_PREFIX + TAG + OLIVE_DOMAIN.
+
+name: ai-olive
+
+x-restart: &restart unless-stopped
+
+services:
+  # ---------------------------------------------------------------- infra
+  postgres:
+    image: postgres:16-alpine
+    restart: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-olive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-olive}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-olive} -d ${POSTGRES_DB:-olive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: *restart
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: *restart
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-olive}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.10-alpine
+    restart: *restart
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-olive}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-olive}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://127.0.0.1:8123/ping 2>&1 | grep -q Ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------- one-shot init (run once)
+  createbuckets:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mc alias set m http://minio:9000 "${MINIO_ROOT_USER:-olive}" "${MINIO_ROOT_PASSWORD}" &&
+        mc mb -p m/${S3_BUCKET:-olive-attachments}
+    depends_on:
+      minio: { condition: service_healthy }
+
+  clickhouse-migrate:
+    image: curlimages/curl:8.11.0
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        curl --fail --silent --show-error \
+          --user "${CLICKHOUSE_USER:-olive}:${CLICKHOUSE_PASSWORD}" \
+          --data-binary @- "http://clickhouse:8123/?database=${CLICKHOUSE_DB:-olive}" <<'SQL'
+        CREATE TABLE IF NOT EXISTS inference_metrics
+        (
+            event_id UUID, session_id UUID,
+            provider LowCardinality(String), model LowCardinality(String),
+            status LowCardinality(String),
+            started_at DateTime64(3,'UTC'), finished_at DateTime64(3,'UTC'),
+            latency_ms UInt32, ttft_ms Nullable(UInt32),
+            prompt_tokens UInt32, completion_tokens UInt32, cost_usd Float64
+        )
+        ENGINE = MergeTree
+        PARTITION BY toYYYYMM(started_at)
+        ORDER BY (provider, model, started_at, event_id)
+        TTL toDateTime(started_at) + INTERVAL 180 DAY;
+        SQL
+    depends_on:
+      clickhouse: { condition: service_healthy }
+
+  chat-migrate:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-chat-service:${TAG:-latest}"
+    pull_policy: always
+    restart: "no"
+    command: ["sh", "-c", "cd /app/chat-service && alembic upgrade head"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-migrate:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-worker-service:${TAG:-latest}"
+    pull_policy: always
+    restart: "no"
+    command: ["sh", "-c", "cd /app/worker-service && alembic upgrade head"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # ------------------------------------------------------------- services
+  chat-service:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-chat-service:${TAG:-latest}"
+    pull_policy: always
+    restart: *restart
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      S3_ENDPOINT_URL: http://minio:9000
+      INGESTION_URL: http://ingestion-service:8001/v1/logs
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      chat-migrate: { condition: service_completed_successfully }
+      createbuckets: { condition: service_completed_successfully }
+
+  ingestion-service:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-ingestion-service:${TAG:-latest}"
+    pull_policy: always
+    restart: *restart
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      redis: { condition: service_healthy }
+
+  worker-service:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-worker-service:${TAG:-latest}"
+    pull_policy: always
+    restart: *restart
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      CLICKHOUSE_URL: http://clickhouse:8123
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      worker-migrate: { condition: service_completed_successfully }
+      clickhouse-migrate: { condition: service_completed_successfully }
+
+  dashboard-service:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-dashboard-service:${TAG:-latest}"
+    pull_policy: always
+    restart: *restart
+    env_file: .env
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+    depends_on:
+      clickhouse: { condition: service_healthy }
+      clickhouse-migrate: { condition: service_completed_successfully }
+
+  ui:
+    image: "${IMAGE_PREFIX:?set IMAGE_PREFIX}-ui:${TAG:-latest}"
+    pull_policy: always
+    restart: *restart
+    depends_on:
+      - chat-service
+      - dashboard-service
+
+  # --------------------------------------------------------- edge / HTTPS
+  caddy:
+    image: caddy:2-alpine
+    restart: *restart
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OLIVE_DOMAIN: ${OLIVE_DOMAIN:?set OLIVE_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - ui
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  clickhouse_data:
+  caddy_data:
+  caddy_config:

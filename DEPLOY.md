@@ -51,26 +51,91 @@ docker compose -f docker-compose.prod.yml down -v         # stop + wipe data
 
 ---
 
-## 2. Put it on the internet (a public URL)
+## 2. Put it on the internet — CI/CD to AWS EC2
 
-Run the exact same one command on a cloud VM, then point a domain at it.
+GitHub Actions builds the images, pushes them to **GHCR**, and deploys them to
+your EC2 box over SSH. Caddy gives you **automatic HTTPS** on your domain.
 
-1. **Provision a VM** (DigitalOcean / Hetzner / EC2 — 4 GB RAM minimum,
-   8 GB recommended; the ClickHouse + chat images are the heavy parts).
-2. **Install Docker**, `git clone` the repo, do the **Section 1** steps.
-3. **Front it with TLS.** Put Caddy in front of `:8080` for automatic HTTPS:
+- **CI** (`.github/workflows/ci.yml`) runs on every push/PR: ruff, mypy,
+  pytest, and the UI (lint/typecheck/test/build). Nothing to configure.
+- **CD** (`.github/workflows/deploy.yml`) runs on **push to `main`** or via
+  **Actions → Deploy → Run workflow**: builds 5 images → GHCR → SSH deploy with
+  `docker-compose.deploy.yml`.
 
-   ```bash
-   # /etc/caddy/Caddyfile
-   your-domain.com {
-       reverse_proxy 127.0.0.1:8080
-   }
-   ```
-   `sudo apt install caddy` → `sudo systemctl restart caddy`. Point your
-   domain's A record at the VM's IP. Done — `https://your-domain.com` serves
-   the whole app.
-4. **Open the firewall** for 80/443 only (keep 8080 and the data ports
-   internal).
+### One-time setup
+
+**1. Launch the EC2 instance**
+- Ubuntu 22.04+, **≥ 4 GB RAM** (8 GB recommended — the chat image bundles
+  faster-whisper). A `t3.large` is comfortable.
+- Security group inbound: **22** (your IP only), **80**, **443**.
+- Point your domain's **A record** at the instance's public IP.
+
+**2. Install Docker on the instance**
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+**3. Create the deploy dir + `.env` on the instance** (holds the real secrets;
+never committed). e.g. `/home/ubuntu/ai-olive/.env`:
+```bash
+mkdir -p ~/ai-olive && cd ~/ai-olive
+cat > .env <<'EOF'
+# --- domain / TLS ---
+OLIVE_DOMAIN=your-domain.com
+# --- auth (production) ---
+DISABLE_AUTH=false
+JWT_SECRET=<a-random-32+-byte-string>
+JWT_ALGORITHM=HS256
+# --- secrets ---
+POSTGRES_USER=olive
+POSTGRES_PASSWORD=<strong>
+POSTGRES_DB=olive
+MINIO_ROOT_USER=olive
+MINIO_ROOT_PASSWORD=<strong>
+S3_BUCKET=olive-attachments
+S3_REGION=us-east-1
+S3_ACCESS_KEY=olive
+S3_SECRET_KEY=<same as MINIO_ROOT_PASSWORD>
+CLICKHOUSE_USER=olive
+CLICKHOUSE_PASSWORD=<strong>
+CLICKHOUSE_DB=olive
+INGESTION_API_KEY=<strong>
+INGESTION_API_KEYS=<strong>
+# --- providers ---
+ANTHROPIC_API_KEY=sk-ant-...
+# IMAGE_PREFIX and TAG are written/refreshed by the deploy workflow.
+EOF
+```
+
+**4. Add GitHub repo secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `SSH_HOST` | EC2 public IP or DNS |
+| `SSH_USER` | `ubuntu` (or `ec2-user`) |
+| `SSH_KEY` | the **private** key (full PEM) for that instance |
+| `SSH_PORT` | `22` (optional) |
+| `DEPLOY_DIR` | `/home/ubuntu/ai-olive` |
+
+GHCR needs no secret — the workflow authenticates with the built-in
+`GITHUB_TOKEN` (push in CI, pull on the box). Images are private under your
+account.
+
+### Deploy
+
+Push to `main`, or run **Actions → Deploy → Run workflow**. The pipeline:
+builds + pushes the 5 images, `scp`s `docker-compose.deploy.yml` + `Caddyfile`
+to `DEPLOY_DIR`, then SSHes in to `docker compose pull && up -d`. On first run
+Caddy provisions a Let's Encrypt cert for `OLIVE_DOMAIN`.
+
+→ Your app is live at **https://your-domain.com**.
+
+Check it:
+```bash
+ssh ubuntu@<ip> 'cd ~/ai-olive && docker compose -f docker-compose.deploy.yml ps'
+curl https://your-domain.com/api/chat/health
+```
 
 That's the entire deployment. The app, the API, the logging pipeline, and the
 dashboard all run behind that one domain.

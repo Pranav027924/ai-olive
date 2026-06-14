@@ -1,0 +1,114 @@
+name: Deploy
+
+# Builds the service images, pushes them to GHCR, and deploys them to the
+# EC2 VPS over SSH (docker compose pull + up). Runs on every push to main
+# and on demand via the "Run workflow" button.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  # GHCR requires a lowercase owner; ai-olive-<service> images live under it.
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [chat-service, ingestion-service, worker-service, dashboard-service, ui]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image prefix
+        id: prefix
+        run: echo "value=${REGISTRY}/${IMAGE_NAMESPACE,,}/ai-olive" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.service }}.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.prefix.outputs.value }}-${{ matrix.service }}:latest
+            ${{ steps.prefix.outputs.value }}-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image prefix
+        id: prefix
+        run: echo "value=${REGISTRY}/${IMAGE_NAMESPACE,,}/ai-olive" >> "$GITHUB_OUTPUT"
+
+      - name: Copy deploy files to the VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "docker-compose.deploy.yml,deploy/Caddyfile"
+          target: ${{ secrets.DEPLOY_DIR }}
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_PREFIX: ${{ steps.prefix.outputs.value }}
+          TAG: ${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: IMAGE_PREFIX,TAG,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_DIR }}"
+
+            # Auth to GHCR with the short-lived job token (images stay private).
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Pin this release's tag for the compose file (.env on the box holds
+            # secrets; we only append/refresh IMAGE_PREFIX + TAG here).
+            grep -q '^IMAGE_PREFIX=' .env && sed -i "s|^IMAGE_PREFIX=.*|IMAGE_PREFIX=$IMAGE_PREFIX|" .env || echo "IMAGE_PREFIX=$IMAGE_PREFIX" >> .env
+            grep -q '^TAG=' .env && sed -i "s|^TAG=.*|TAG=$TAG|" .env || echo "TAG=$TAG" >> .env
+
+            COMPOSE="docker compose -f docker-compose.deploy.yml"
+            $COMPOSE pull
+            # up runs the one-shot migrate/createbuckets/clickhouse-migrate jobs
+            # (dependents wait on service_completed_successfully), then the
+            # services. Changing TAG recreates them, so migrations re-run.
+            $COMPOSE up -d --remove-orphans
+            docker image prune -f
