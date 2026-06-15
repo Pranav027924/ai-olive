@@ -77,7 +77,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          source: "docker-compose.deploy.yml,deploy/Caddyfile"
+          source: "docker-compose.deploy.yml,deploy/Caddyfile,deploy/clickhouse-low-mem.xml"
           target: ${{ secrets.DEPLOY_DIR }}
 
       - name: Deploy over SSH
