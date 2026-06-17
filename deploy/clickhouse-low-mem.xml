@@ -1,17 +1,9 @@
-<!-- Low-memory ClickHouse profile for small VMs (e.g. a 1-2 GB EC2).
-     ClickHouse otherwise sizes caches in gigabytes and spins up many
-     background threads, which a t3.micro can't afford. Mounted at
-     /etc/clickhouse-server/config.d/low-mem.xml. -->
+<!-- Modest ClickHouse memory caps. Only well-known, always-valid top-level
+     server settings live here so the server never refuses to start over an
+     unknown config key. Mounted at /etc/clickhouse-server/config.d/low-mem.xml. -->
 <clickhouse>
-    <!-- Cap server memory to a fraction of (physical) RAM. -->
-    <max_server_memory_usage_to_ram_ratio>0.6</max_server_memory_usage_to_ram_ratio>
-    <!-- Shrink caches that default to multiple GB. -->
-    <mark_cache_size>134217728</mark_cache_size>          <!-- 128 MB -->
-    <uncompressed_cache_size>0</uncompressed_cache_size>
-    <!-- Fewer background threads for a 2-vCPU burstable box. -->
-    <background_pool_size>4</background_pool_size>
-    <background_schedule_pool_size>4</background_schedule_pool_size>
-    <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
-    <tables_loader_foreground_pool_size>2</tables_loader_foreground_pool_size>
-    <tables_loader_background_pool_size>2</tables_loader_background_pool_size>
+    <!-- Cap server memory at a fraction of RAM (e.g. ~3.2 GB on a 4 GB box). -->
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+    <!-- Shrink the mark cache (defaults to 5 GB). -->
+    <mark_cache_size>536870912</mark_cache_size>   <!-- 512 MB -->
 </clickhouse>
