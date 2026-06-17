@@ -106,7 +106,21 @@ jobs:
             grep -q '^TAG=' .env && sed -i "s|^TAG=.*|TAG=$TAG|" .env || echo "TAG=$TAG" >> .env
 
             COMPOSE="docker compose -f docker-compose.deploy.yml"
-            $COMPOSE pull
+
+            # Docker Hub pulls (caddy/postgres/redis/minio/clickhouse) can hit
+            # transient "TLS handshake timeout" on a small VM. Retry the pull a
+            # few times before giving up; each retry resumes missing layers.
+            n=0
+            until $COMPOSE pull; do
+              n=$((n + 1))
+              if [ "$n" -ge 5 ]; then
+                echo "compose pull failed after $n attempts" >&2
+                exit 1
+              fi
+              echo "compose pull failed (attempt $n); retrying in 15s..."
+              sleep 15
+            done
+
             # up runs the one-shot migrate/createbuckets/clickhouse-migrate jobs
             # (dependents wait on service_completed_successfully), then the
             # services. Changing TAG recreates them, so migrations re-run.
