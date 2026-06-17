@@ -93,13 +93,19 @@ services:
   clickhouse-migrate:
     image: curlimages/curl:8.11.0
     restart: "no"
+    env_file: .env
+    # Creds come from the container's env (set via env_file) and are expanded by
+    # the shell at runtime ($$ keeps compose from interpolating them), so any
+    # special characters in the password are passed through verbatim. Auth via
+    # headers avoids the user:password ":" split.
     entrypoint:
       - sh
       - -c
       - |
         curl --fail --silent --show-error \
-          --user "${CLICKHOUSE_USER:-olive}:${CLICKHOUSE_PASSWORD}" \
-          --data-binary @- "http://clickhouse:8123/?database=${CLICKHOUSE_DB:-olive}" <<'SQL'
+          -H "X-ClickHouse-User: $${CLICKHOUSE_USER:-olive}" \
+          -H "X-ClickHouse-Key: $${CLICKHOUSE_PASSWORD}" \
+          --data-binary @- "http://clickhouse:8123/?database=$${CLICKHOUSE_DB:-olive}" <<'SQL'
         CREATE TABLE IF NOT EXISTS inference_metrics
         (
             event_id UUID, session_id UUID,
