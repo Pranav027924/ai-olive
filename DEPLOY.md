@@ -65,18 +65,36 @@ your EC2 box over SSH. Caddy gives you **automatic HTTPS** on your domain.
 ### One-time setup
 
 **1. Launch the EC2 instance**
-- Ubuntu 22.04+, **≥ 4 GB RAM** (8 GB recommended — the chat image bundles
-  faster-whisper). A `t3.large` is comfortable.
-- Security group inbound: **22** (your IP only), **80**, **443**.
-- Point your domain's **A record** at the instance's public IP.
+- Ubuntu 24.04 (or 22.04), **≥ 4 GB RAM** (8 GB recommended — the chat image
+  bundles faster-whisper). A `t3.large` is comfortable.
+- **30 GB gp3** root volume. The 8 GB default is too small for the images.
+- Security group inbound: **22**, **80**, **443** from anywhere. Port 22 must
+  be reachable from GitHub Actions runners, whose IPs change, so a "my IP only"
+  rule makes every deploy fail with `dial tcp …: i/o timeout`. SSH stays
+  key-only.
+- **Allocate an Elastic IP and associate it** with the instance. Without one,
+  the public IP changes on every stop/start, and `SSH_HOST` (plus your DNS)
+  silently goes stale.
+- Optional: point your domain's **A record** at the Elastic IP. Without a
+  domain, `<ip-with-dashes>.sslip.io` works and still gets HTTPS.
 
-**2. Install Docker on the instance**
+**2 + 3. Bootstrap the instance** (Docker, swap, deploy dir, and a `.env` with
+generated secrets):
+```bash
+ssh -i key.pem ubuntu@<elastic-ip> 'bash -s' < deploy/bootstrap-ec2.sh
+# with your own domain:
+ssh -i key.pem ubuntu@<elastic-ip> 'OLIVE_DOMAIN=app.example.com bash -s' < deploy/bootstrap-ec2.sh
+# then add your provider key(s):
+ssh -i key.pem ubuntu@<elastic-ip> 'echo "ANTHROPIC_API_KEY=sk-ant-..." >> ~/ai-olive/.env'
+```
+
+To do it by hand instead, install Docker:
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER && newgrp docker
 ```
 
-**3. Create the deploy dir + `.env` on the instance** (holds the real secrets;
+then create the deploy dir + `.env` on the instance (holds the real secrets;
 never committed). e.g. `/home/ubuntu/ai-olive/.env`:
 ```bash
 mkdir -p ~/ai-olive && cd ~/ai-olive
@@ -144,9 +162,11 @@ dashboard all run behind that one domain.
 
 ## 3. Production hardening (when you go past a demo)
 
-- **Auth:** the UI has no login screen yet, so keep `DISABLE_AUTH=true`. To
-  turn on JWT (`DISABLE_AUTH=false` + a 32-byte `JWT_SECRET`) you first need a
-  login flow in the UI — ask and I'll add it.
+- **Auth:** the UI has register + login, so production runs with
+  `DISABLE_AUTH=false` and a 32+ byte `JWT_SECRET`. Registration is open by
+  default (`ALLOW_REGISTRATION=true`), so anyone who finds the URL can sign up
+  and spend your provider credits. Set `ALLOW_REGISTRATION=false` once your
+  own accounts exist.
 - **Secrets:** use strong values in `.env` (never commit it — it's gitignored)
   or a secrets manager. Rotate the Anthropic key if it's ever shared.
 - **Cost:** every chat reply is a real provider API call ($). The stack is
