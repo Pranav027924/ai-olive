@@ -41,6 +41,25 @@ describe("useChatStream", () => {
     expect(result.current.error).toBe("boom");
   });
 
+  it("surfaces the server's reason when the stream finishes errored", async () => {
+    vi.spyOn(sse, "streamChat").mockImplementation(async (_id, handlers) => {
+      handlers.onFinished?.({
+        state: "errored",
+        content: "",
+        error: "AuthenticationError: invalid x-api-key",
+      });
+    });
+
+    const { result } = renderHook(() => useChatStream());
+
+    await act(async () => {
+      await result.current.start("sid");
+    });
+
+    expect(result.current.status).toBe("errored");
+    expect(result.current.error).toBe("AuthenticationError: invalid x-api-key");
+  });
+
   it("abort flips status to cancelled when streaming", async () => {
     let resolveStream!: () => void;
     vi.spyOn(sse, "streamChat").mockImplementation(

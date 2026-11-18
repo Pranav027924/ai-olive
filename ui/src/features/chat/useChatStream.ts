@@ -30,7 +30,12 @@ export function useChatStream(): UseChatStreamResult {
       sessionId,
       {
         onChunk: (delta) => setText((prev) => prev + delta),
-        onFinished: (payload) => setStatus(payload.state),
+        onFinished: (payload) => {
+          // Provider failures (bad API key, rate limit, ...) arrive here as
+          // state "errored" with the server's reason, not via onError.
+          if (payload.error) setError(payload.error);
+          setStatus(payload.state);
+        },
         onError: (err) => {
           setError(err instanceof Error ? err.message : String(err));
           setStatus("errored");
