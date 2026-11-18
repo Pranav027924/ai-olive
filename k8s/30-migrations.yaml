@@ -1,5 +1,5 @@
 # One-shot migration Jobs (PRD §9.10). Re-run after each image bump:
-#   kubectl -n ai-olive delete job chat-migrate worker-migrate clickhouse-migrate --ignore-not-found
+#   kubectl -n ai-olive delete job chat-migrate worker-migrate clickhouse-migrate createbuckets --ignore-not-found
 #   kubectl apply -f k8s/30-migrations.yaml
 apiVersion: batch/v1
 kind: Job
@@ -83,3 +83,31 @@ spec:
               ORDER BY (provider, model, started_at, event_id)
               TTL toDateTime(started_at) + INTERVAL 180 DAY;
               SQL
+---
+# Creates the attachments bucket in RustFS (idempotent: --ignore-existing).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: createbuckets
+  namespace: ai-olive
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: createbuckets
+          image: rustfs/rustfs:1.0.5
+          command: ["/usr/bin/rc"]
+          args: ["bucket", "create", "s3/$(S3_BUCKET)", "--ignore-existing"]
+          env:
+            - name: S3_BUCKET
+              valueFrom: { configMapKeyRef: { name: olive-config, key: S3_BUCKET } }
+            - name: S3_ACCESS_KEY
+              valueFrom: { configMapKeyRef: { name: olive-config, key: S3_ACCESS_KEY } }
+            - name: S3_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: olive-secrets, key: S3_SECRET_KEY } }
+            # rc reads its target from RC_HOST_<alias>; the creds sit in a URL,
+            # so S3_SECRET_KEY must be URL-safe (e.g. `openssl rand -hex 24`).
+            - name: RC_HOST_s3
+              value: "http://$(S3_ACCESS_KEY):$(S3_SECRET_KEY)@rustfs:9000"

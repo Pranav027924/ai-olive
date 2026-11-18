@@ -1,5 +1,7 @@
 # Local development stack.
-# Postgres, Redis, and MinIO per PRD Phase 0.3.
+# Postgres, Redis, and RustFS (S3-compatible object storage) per PRD Phase 0.3.
+# RustFS replaces MinIO, whose community images were removed from Docker Hub
+# and gated on Quay in 2026.
 # ClickHouse is added in Phase 7.4 (and switched on via the `analytics` profile).
 #
 # Bring up: `make up`  (or: docker compose up -d)
@@ -45,25 +47,38 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    container_name: ai-olive-minio
+  rustfs:
+    image: rustfs/rustfs:1.0.5
+    container_name: ai-olive-rustfs
     restart: unless-stopped
-    command: ["server", "/data", "--console-address", ":9001"]
+    # The .env keeps the MINIO_ROOT_* names; S3_ACCESS_KEY/S3_SECRET_KEY must match them.
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-olive}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-olive_dev_pw_minio}
+      RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER:-olive}
+      RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-olive_dev_pw_minio}
+      RUSTFS_OBS_LOG_DIRECTORY: ""   # log to stdout (docker logs), not files in the container
     ports:
       - "127.0.0.1:9000:9000"   # S3 API
-      - "127.0.0.1:9001:9001"   # Web console
+      - "127.0.0.1:9001:9001"   # Web console: http://127.0.0.1:9001/rustfs/console/
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  # One-shot: create the attachments bucket (idempotent), then exit 0.
+  createbuckets:
+    image: rustfs/rustfs:1.0.5
+    container_name: ai-olive-createbuckets
+    restart: "no"
+    entrypoint: ["/usr/bin/rc"]
+    command: ["bucket", "create", "s3/${S3_BUCKET:-olive-attachments}", "--ignore-existing"]
+    environment:
+      RC_HOST_s3: "http://${MINIO_ROOT_USER:-olive}:${MINIO_ROOT_PASSWORD:-olive_dev_pw_minio}@rustfs:9000"
+    depends_on:
+      rustfs: { condition: service_healthy }
 
   # ClickHouse (Phase 7.4). Off by default; enable with `make up-analytics` or
   # `docker compose --profile analytics up -d`.
@@ -79,7 +94,7 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
       - "127.0.0.1:8123:8123"   # HTTP
-      - "127.0.0.1:9009:9000"   # native TCP (host 9009 to avoid MinIO collision)
+      - "127.0.0.1:9009:9000"   # native TCP (host 9009 to avoid the RustFS :9000 collision)
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     ulimits:
@@ -97,5 +112,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  minio_data:
+  rustfs_data:
   clickhouse_data:

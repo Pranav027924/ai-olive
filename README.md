@@ -25,13 +25,13 @@ docs/adr/             Architecture decision records
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/) for dependency management
-- Docker + Docker Compose (for local infra: Postgres / Redis / MinIO / ClickHouse)
+- Docker + Docker Compose (for local infra: Postgres / Redis / RustFS / ClickHouse)
 
 ## Quick start
 
 ```bash
 make install   # sync workspace deps via uv
-make up        # bring up local infra (Postgres, Redis, MinIO)
+make up        # bring up local infra (Postgres, Redis, RustFS)
 make test      # run all tests
 make check     # lint + typecheck
 make down      # tear down local infra

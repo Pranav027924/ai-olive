@@ -11,7 +11,7 @@ resources:
   - 10-config.yaml
   - 20-postgres.yaml
   - 21-redis.yaml
-  - 22-minio.yaml
+  - 22-rustfs.yaml
   - 23-clickhouse.yaml
   - 30-migrations.yaml
   - 40-chat-service.yaml

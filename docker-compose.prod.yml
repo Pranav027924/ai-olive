@@ -16,6 +16,11 @@ name: ai-olive-prod
 
 x-restart: &restart unless-stopped
 
+# S3-compatible object storage for chat attachments. RustFS replaces MinIO,
+# whose community images were removed from Docker Hub and gated on Quay in 2026.
+# The same image provides the server and the `rc` CLI used by createbuckets.
+x-rustfs-image: &rustfs-image rustfs/rustfs:1.0.5
+
 services:
   # ---------------------------------------------------------------- infra
   postgres:
@@ -51,17 +56,18 @@ services:
       resources:
         limits: { cpus: "0.5", memory: 512m }
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  rustfs:
+    image: *rustfs-image
     restart: *restart
-    command: ["server", "/data", "--console-address", ":9001"]
+    # The .env keeps the MINIO_ROOT_* names so existing setups need no changes.
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-olive}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER:-olive}
+      RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      RUSTFS_OBS_LOG_DIRECTORY: ""   # log to stdout (docker logs), not files in the container
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -93,16 +99,16 @@ services:
 
   # ---------------------------------------------- one-shot init (run once)
   createbuckets:
-    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    image: *rustfs-image
     restart: "no"
-    entrypoint:
-      - sh
-      - -c
-      - |
-        mc alias set m http://minio:9000 "${MINIO_ROOT_USER:-olive}" "${MINIO_ROOT_PASSWORD}" &&
-        mc mb -p m/${S3_BUCKET:-olive-attachments}
+    # rc reads the target from RC_HOST_<alias>. Credentials sit in a URL here,
+    # so they must be URL-safe (e.g. `openssl rand -hex 24`).
+    entrypoint: ["/usr/bin/rc"]
+    command: ["bucket", "create", "s3/${S3_BUCKET:-olive-attachments}", "--ignore-existing"]
+    environment:
+      RC_HOST_s3: "http://${MINIO_ROOT_USER:-olive}:${MINIO_ROOT_PASSWORD}@rustfs:9000"
     depends_on:
-      minio: { condition: service_healthy }
+      rustfs: { condition: service_healthy }
 
   clickhouse-migrate:
     image: curlimages/curl:8.11.0
@@ -163,14 +169,14 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
-      S3_ENDPOINT_URL: http://minio:9000
+      S3_ENDPOINT_URL: http://rustfs:9000
       INGESTION_URL: http://ingestion-service:8001/v1/logs
     ports:
       - "8000:8000"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      minio: { condition: service_healthy }
+      rustfs: { condition: service_healthy }
       chat-migrate: { condition: service_completed_successfully }
       createbuckets: { condition: service_completed_successfully }
     deploy:
@@ -243,5 +249,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  minio_data:
+  rustfs_data:
   clickhouse_data:

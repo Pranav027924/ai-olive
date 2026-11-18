@@ -1,6 +1,6 @@
 # Deploying AI-OLive
 
-The whole project — UI + all 4 services + worker + Postgres/Redis/MinIO/
+The whole project — UI + all 4 services + worker + Postgres/Redis/RustFS/
 ClickHouse — runs from **one command**. The UI's nginx reverse-proxies the
 API, so everything is reachable from a **single URL** (`http://HOST:8080`).
 No Vercel, no per-service wiring.
@@ -31,7 +31,7 @@ docker compose -f docker-compose.prod.yml ps
 ```
 
 That command also runs, in order: the Postgres migrations (chat + worker),
-creates the MinIO bucket, and creates the ClickHouse table — all as one-shot
+creates the RustFS bucket, and creates the ClickHouse table — all as one-shot
 init services. When it settles, every container is `running` or
 `exited (0)` (the init ones).
 

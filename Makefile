@@ -83,7 +83,7 @@ worker: ## Run the worker-service drain loop.
 COMPOSE ?= docker compose
 
 .PHONY: up
-up: ## Bring up local infra (Postgres, Redis, MinIO).
+up: ## Bring up local infra (Postgres, Redis, RustFS).
 	$(COMPOSE) up -d
 	@echo "Waiting for services to be healthy..."
 	@$(COMPOSE) ps

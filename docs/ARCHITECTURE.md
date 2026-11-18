@@ -108,7 +108,7 @@ and serves aggregate metrics back to the UI.
             │          ·  cancellation flags (chat)         │
             └───────────────────────────────────────────────┘
 
-      Object storage:  MinIO (S3-compatible)  ← chat uploads (PDF/audio blobs)
+      Object storage:  RustFS (S3-compatible) ← chat uploads (PDF/audio blobs)
       Media library:   media-service (parsing + transcription), imported by chat
 ```
 
@@ -130,7 +130,7 @@ and serves aggregate metrics back to the UI.
 |---|---|
 | **Postgres 16** | System of record: `chat` schema (sessions/messages/attachments) + `logs` schema (inference_logs/log_errors, partitioned) |
 | **Redis 7** | Durable work queue (Streams), worker consumer group, dead-letter stream, chat cancellation flags |
-| **MinIO** | S3-compatible object storage for uploaded file/voice blobs |
+| **RustFS** | S3-compatible object storage for uploaded file/voice blobs (replaced MinIO in 2026) |
 | **ClickHouse** | Column store for analytics (`inference_metrics`), written by the worker, read by the dashboard |
 
 ---
@@ -181,7 +181,7 @@ with `status=cancelled`. The SSE `finished` event carries the partial content.
 ### 3.3 File / voice upload
 
 1. `POST /api/chat/{id}/files` (or `/voice`) — multipart upload.
-2. Chat Service writes the blob to **MinIO** under
+2. Chat Service writes the blob to **RustFS** under
    `sessions/{id}/attachments/{aid}/{filename}`, inserts an `attachments` row
    with `parse_status=pending`, and returns `202 Accepted` immediately.
 3. A FastAPI **BackgroundTask** runs the **media-service** use case: documents
@@ -233,7 +233,7 @@ with `status=cancelled`. The SSE `finished` event carries the partial content.
 | Validation / models | Pydantic v2 (+ pydantic-settings for config) |
 | Relational DB | Postgres 16, SQLAlchemy 2.x async, asyncpg, Alembic migrations |
 | Queue | Redis 7 Streams (consumer groups) |
-| Object storage | MinIO / S3 (aioboto3) |
+| Object storage | RustFS / S3 (aioboto3) |
 | Analytics store | ClickHouse (aiochclient) |
 | LLM providers | `anthropic`, `openai`, `google-genai` SDKs (DeepSeek via OpenAI-compatible API) |
 | Transcription | faster-whisper |
@@ -303,7 +303,7 @@ AI-OLive/
 ├── Makefile                    # install / check / lint / typecheck / test / up / migrate / worker
 ├── pyproject.toml              # uv workspace root + shared tool config (ruff, mypy, pytest)
 ├── uv.lock                     # single lockfile for the whole workspace
-├── docker-compose.yml          # Local infra: Postgres, Redis, MinIO, ClickHouse(profile)
+├── docker-compose.yml          # Local infra: Postgres, Redis, RustFS, ClickHouse(profile)
 ├── docker-compose.prod.yml     # Full containerised stack (services + infra + migrations)
 │
 ├── shared/
@@ -473,7 +473,7 @@ as FastAPI BackgroundTasks.
 - **Transcription** (`Transcriber` Protocol): `FasterWhisperTranscriber` (lazy
   model load; empty transcript ⇒ `TranscriptionFailed`).
 - **Object storage** (`ObjectStorage` Protocol): `S3ObjectStorage` (aioboto3 /
-  MinIO) + `InMemoryObjectStorage` (tests/dev).
+  RustFS) + `InMemoryObjectStorage` (tests/dev).
 - Produces an `ExtractedContent` value object (text + metadata) consumed by the
   chat-service's `ProcessAttachment` use case.
 
@@ -583,11 +583,11 @@ read-model split).
   event_id)`, 180-day TTL. The analytics read-model. Schema in
   `clickhouse/migrations/`.
 
-### 9.4 Redis & MinIO
+### 9.4 Redis & RustFS
 
 - **Redis** — the `inference_logs` stream + consumer group, the DLQ stream, and
   chat cancellation flags.
-- **MinIO** — `olive-attachments` bucket; blobs at
+- **RustFS** — `olive-attachments` bucket; blobs at
   `sessions/{id}/attachments/{aid}/{filename}`.
 
 ---
@@ -654,13 +654,13 @@ Quality gates: `make check` runs `ruff check`, `ruff format --check`, and
 make install                         # uv sync the workspace
 cp .env.example .env                 # then add a provider key, e.g. ANTHROPIC_API_KEY=...
 
-# 1. infrastructure (Postgres, Redis, MinIO + ClickHouse)
+# 1. infrastructure (Postgres, Redis, RustFS + ClickHouse)
 make up && make up-analytics
 
 # 2. schema
 make migrate-all                     # chat + worker Postgres migrations
 make migrate-clickhouse              # analytics table
-#    (create the MinIO bucket 'olive-attachments' once)
+#    (the createbuckets one-shot creates the 'olive-attachments' bucket)
 
 # 3. app processes (chat:8000, ingestion:8001, dashboard:8004, worker, ui:5173)
 scripts/dev-local.sh up

@@ -3,7 +3,7 @@
 POST /sessions               creates a session with a system prompt
 POST /sessions/{id}/files    uploads a PDF carrying a unique sentinel
                              string; chat-service writes the bytes to
-                             MinIO, the parse_status row to Postgres,
+                             RustFS, the parse_status row to Postgres,
                              then runs the BackgroundTasks parser
 GET  /sessions/{id}          polled until parse_status='complete' so
                              we know the attachment text is available
@@ -12,7 +12,7 @@ GET  /chat/{id}/stream       SSE stream; we assert the LLM reply
 
 Preconditions (skipped automatically if not met):
 - ``ANTHROPIC_API_KEY`` is set
-- Postgres + MinIO are reachable (``make up`` brings them up)
+- Postgres + RustFS are reachable (``make up`` brings them up)
 - ``chat.attachments`` table migrated (``make migrate``)
 """
 

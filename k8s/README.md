@@ -1,7 +1,7 @@
 # Kubernetes manifests (PRD §9.10)
 
 A self-contained namespace (`ai-olive`) with infra (Postgres, Redis,
-MinIO, ClickHouse as single-replica StatefulSets), one-shot migration
+RustFS, ClickHouse as single-replica StatefulSets), one-shot migration
 Jobs, the four app services + worker, the nginx UI, and an Ingress.
 
 Files are numbered by apply order; `kustomization.yaml` ties them

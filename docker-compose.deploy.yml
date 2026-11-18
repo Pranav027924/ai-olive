@@ -53,6 +53,7 @@ services:
     environment:
       RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER:-olive}
       RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      RUSTFS_OBS_LOG_DIRECTORY: ""   # log to stdout (docker logs), not files in the container
     volumes:
       - rustfs_data:/data
     healthcheck:

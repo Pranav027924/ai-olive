@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local dev process manager for the AI-OLive app services.
 #
-# Infra (Postgres/Redis/MinIO/ClickHouse) is managed by docker compose
+# Infra (Postgres/Redis/RustFS/ClickHouse) is managed by docker compose
 # via `make up && make up-analytics`. This script runs the Python/UI
 # processes on top of it.
 #

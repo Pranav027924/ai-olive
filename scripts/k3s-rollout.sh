@@ -90,16 +90,16 @@ apply_manifests() {
 
 wait_for_infra() {
   log "Waiting for infra StatefulSets to be ready"
-  for sts in postgres redis minio clickhouse; do
+  for sts in postgres redis rustfs clickhouse; do
     "$KUBECTL" -n "$NS" rollout status "statefulset/${sts}" --timeout=180s
   done
 }
 
 run_migrations() {
   log "Re-running migration Jobs"
-  "$KUBECTL" -n "$NS" delete job chat-migrate worker-migrate clickhouse-migrate --ignore-not-found
+  "$KUBECTL" -n "$NS" delete job chat-migrate worker-migrate clickhouse-migrate createbuckets --ignore-not-found
   "$KUBECTL" apply -f k8s/30-migrations.yaml
-  for job in chat-migrate worker-migrate clickhouse-migrate; do
+  for job in chat-migrate worker-migrate clickhouse-migrate createbuckets; do
     log "Waiting for job/${job}"
     "$KUBECTL" -n "$NS" wait --for=condition=complete "job/${job}" --timeout=180s
   done

@@ -11,6 +11,6 @@ Layering follows the same hexagonal split (PRD §5.2):
 - ``application``    use cases: ParseDocument, TranscribeAudio +
                      ports (DocumentParser, Transcriber).
 - ``infrastructure`` adapters: regex MIME parsers, faster-whisper
-                     transcriber, S3 (MinIO) storage, arq tasks.
+                     transcriber, S3 (RustFS) storage, arq tasks.
 - ``interfaces``     reserved for the future standalone HTTP service.
 """

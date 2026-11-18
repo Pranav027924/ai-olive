@@ -1,7 +1,7 @@
 """ObjectStorage — outbound port for blob storage (PRD §6.7, §10.2).
 
 Chat uploads (PDFs, audio clips) live in S3-compatible storage; the
-adapter layer ships an aioboto3 implementation against MinIO/S3 plus
+adapter layer ships an aioboto3 implementation against S3-compatible stores (RustFS/S3) plus
 an in-memory implementation used by tests + local development.
 """
 

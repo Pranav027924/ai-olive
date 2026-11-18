@@ -18,7 +18,7 @@ the exact words right.
 
 Preconditions (skipped automatically if not met):
 - ``ANTHROPIC_API_KEY`` is set
-- MinIO + Postgres are reachable (``make up``)
+- RustFS + Postgres are reachable (``make up``)
 - The faster-whisper tiny model can be downloaded on first run
 """
 

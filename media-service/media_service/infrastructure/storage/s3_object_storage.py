@@ -1,4 +1,4 @@
-"""S3ObjectStorage — aioboto3 ObjectStorage against S3 / MinIO (PRD §6.7).
+"""S3ObjectStorage — aioboto3 ObjectStorage against S3 / RustFS (PRD §6.7).
 
 aioboto3 builds clients via an async context manager; we re-open one
 per call to keep the adapter stateless and safe to share across the

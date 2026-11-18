@@ -1,6 +1,6 @@
 """HTTP tests for the upload endpoints (Phase 6.8).
 
-Dependency overrides swap the real Postgres/MinIO/Whisper adapters
+Dependency overrides swap the real Postgres/RustFS/Whisper adapters
 for the in-memory fakes from ``tests/conftest.py`` so these tests
 stay unit-fast and don't touch the network.
 """

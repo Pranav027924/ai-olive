@@ -107,7 +107,7 @@ jobs:
 
             COMPOSE="docker compose -f docker-compose.deploy.yml"
 
-            # Docker Hub pulls (caddy/postgres/redis/minio/clickhouse) can hit
+            # Docker Hub pulls (caddy/postgres/redis/rustfs/clickhouse) can hit
             # transient "TLS handshake timeout" on a small VM. Retry the pull a
             # few times before giving up; each retry resumes missing layers.
             n=0

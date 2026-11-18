@@ -1,6 +1,6 @@
 """InMemoryObjectStorage — fast, dependency-free ObjectStorage.
 
-Used by chat-service unit tests and by local dev when MinIO isn't
+Used by chat-service unit tests and by local dev when RustFS isn't
 running. Not threadsafe — fine for asyncio's single-loop model.
 """
 

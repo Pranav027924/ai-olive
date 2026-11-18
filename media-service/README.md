@@ -27,7 +27,7 @@ media_service/
     transcription/
       whisper_transcriber.py       # Phase 6.6 — faster-whisper
     storage/
-      s3_storage.py                # Phase 6.7 — aioboto3 (MinIO)
+      s3_storage.py                # Phase 6.7 — aioboto3 (RustFS/S3)
 ```
 
 ## Test

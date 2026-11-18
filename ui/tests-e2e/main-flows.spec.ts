@@ -9,7 +9,7 @@
  *
  * Preconditions (the suite skips early if these aren't met):
  *   - chat-service on 8000, dashboard-service on 8004 (see vite proxy)
- *   - postgres, redis, minio, clickhouse via `make up && make up-analytics`
+ *   - postgres, redis, rustfs, clickhouse via `make up && make up-analytics`
  *   - migrations applied (`make migrate-all && make migrate-clickhouse`)
  *   - ANTHROPIC_API_KEY set so streamed replies actually come back
  */
